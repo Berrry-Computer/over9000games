@@ -156,9 +156,9 @@ router.post("/api/game/generate", async (req, res) => {
       return;
     }
 
-    // Use gpt-5-nano for testbed, gpt-5 for dev and production (unless model specified)
+    // Use gpt-5-nano for testbed, gpt-5.2-codex for dev and production (unless model specified)
     const isTestbed = context.subredditName === 'testbed';
-    const defaultModel = process.env.TEST_MODEL || (isTestbed ? 'gpt-5-nano' : 'gpt-5');
+    const defaultModel = process.env.TEST_MODEL || (isTestbed ? 'gpt-5-nano' : 'gpt-5.2-codex');
     const selectedModel = model || defaultModel;
     console.log(`Model selection: subreddit=${context.subredditName}, isTestbed=${isTestbed}, using=${selectedModel}`);
 
@@ -229,9 +229,9 @@ router.post("/api/game/edit", async (req, res) => {
       return;
     }
 
-    // Use gpt-5-nano for testbed, gpt-5 for dev and production
+    // Use gpt-5-nano for testbed, gpt-5.2-codex for dev and production
     const isTestbed = context.subredditName === 'testbed';
-    const defaultModel = process.env.TEST_MODEL || (isTestbed ? 'gpt-5-nano' : 'gpt-5');
+    const defaultModel = process.env.TEST_MODEL || (isTestbed ? 'gpt-5-nano' : 'gpt-5.2-codex');
     console.log(`Edit model selection: subreddit=${context.subredditName}, isTestbed=${isTestbed}, using=${defaultModel}`);
 
     // Create async job for editing (also background now)
