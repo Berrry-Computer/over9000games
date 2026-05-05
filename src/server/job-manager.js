@@ -13,7 +13,7 @@ export class JobManager {
       postId,
       description,
       userId,
-      model: options.model || 'gpt-5',
+      model: options.model || 'gpt-5.5',
       status: 'queued',
       priority: String(options.priority || 0),
       createdAt: Date.now().toString()
@@ -119,6 +119,6 @@ export class JobManager {
 
   getEstimatedTime(model) {
     // Based on testbed data: avg 165s, median 164s, 90th percentile 265s
-    return 180; // seconds (gpt-5 - 3 minutes, covers ~85% of cases)
+    return 180; // seconds (gpt-5.5 - 3 minutes, covers ~85% of cases)
   }
 }
