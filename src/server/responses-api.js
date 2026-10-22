@@ -8,7 +8,7 @@ export class ResponsesAPI {
     this.gameRunner = new HeadlessGameRunner();
   }
 
-  async createResponse(description, model = 'gpt-5.5', previousGame = null) {
+  async createResponse(description, model = 'gpt-6.1-sol', previousGame = null) {
     const prompt = createGameGenerationPrompt(description, previousGame);
 
     console.log(`Creating OpenAI response with model ${model}:`, description.substring(0, 100) + '...');

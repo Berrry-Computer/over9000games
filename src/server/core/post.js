@@ -9,5 +9,6 @@ export const createPost = async () => {
   return await reddit.submitCustomPost({
     subredditName: subredditName,
     title: "over9000games",
+    textFallback: { text: "Create, play, and share 8-bit games." },
   });
 };

@@ -156,9 +156,9 @@ router.post("/api/game/generate", async (req, res) => {
       return;
     }
 
-    // Use gpt-5.5 by default unless overridden for testing or by the request body.
+    // Use gpt-6.1-sol by default unless overridden for testing or by the request body.
     const isTestbed = context.subredditName === 'testbed';
-    const defaultModel = process.env.TEST_MODEL || 'gpt-5.5';
+    const defaultModel = process.env.TEST_MODEL || 'gpt-6.1-sol';
     const selectedModel = model || defaultModel;
     console.log(`Model selection: subreddit=${context.subredditName}, isTestbed=${isTestbed}, using=${selectedModel}`);
 
@@ -229,9 +229,9 @@ router.post("/api/game/edit", async (req, res) => {
       return;
     }
 
-    // Use gpt-5.5 by default unless overridden for testing.
+    // Use gpt-6.1-sol by default unless overridden for testing.
     const isTestbed = context.subredditName === 'testbed';
-    const defaultModel = process.env.TEST_MODEL || 'gpt-5.5';
+    const defaultModel = process.env.TEST_MODEL || 'gpt-6.1-sol';
     console.log(`Edit model selection: subreddit=${context.subredditName}, isTestbed=${isTestbed}, using=${defaultModel}`);
 
     // Create async job for editing (also background now)
@@ -674,10 +674,12 @@ router.post("/api/post/create", async (req, res) => {
       // Continue without screenshot rather than failing the entire post
     }
 
-    // Create the post (splash screen is now handled by splash.html entry point)
+    // Post opens on the inline splash.html entry, which expands into the game entry
     const post = await reddit.submitCustomPost({
       subredditName: context.subredditName,
       title: title,
+      textFallback: { text: gameDescription || message || "AI-powered retro game." },
+      ...(screenshotUrl ? { styles: { shareImageUrl: screenshotUrl } } : {}),
     });
 
     if (!post?.id) {
@@ -723,10 +725,10 @@ router.post("/internal/on-app-install", async (_req, res) => {
       message: `Post created in subreddit ${context.subredditName} with id ${post.id}`,
     });
   } catch (error) {
-    console.error(`Error creating post: ${error}`);
-    res.status(400).json({
-      status: "error",
-      message: "Failed to create post",
+    console.error("Error creating post on app install:", error);
+    res.json({
+      status: "warning",
+      message: "App installed, but automatic post creation failed",
     });
   }
 });

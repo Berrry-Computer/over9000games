@@ -9,8 +9,7 @@
     "entrypoints": {
       "default": {
         "entry": "splash.html",
-        "height": "regular",
-        "inline": true
+        "height": "regular"
       },
       "game": {
         "entry": "index.html",
@@ -24,6 +23,10 @@
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
+  },
+  "scripts": {
+    "dev": "npm run dev:watch",
+    "build": "npm run build"
   },
   "menu": {
     "items": [
@@ -47,7 +50,14 @@
     "onAppInstall": "/internal/on-app-install"
   },
   "permissions": {
-    "media": true
+    "http": {
+      "enable": true,
+      "domains": [
+        "api.openai.com"
+      ]
+    },
+    "media": true,
+    "redis": true
   },
   "dev": {
     "subreddit": "over9000games_private"

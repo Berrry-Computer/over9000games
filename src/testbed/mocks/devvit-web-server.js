@@ -956,13 +956,13 @@ export const reddit = {
     return context.userId || 'testuser';
   },
 
-  async submitCustomPost({ title, subredditName, splash }) {
+  async submitCustomPost({ title, subredditName, styles }) {
     const postId = `post_${Date.now()}`;
     console.log('[TESTBED] Created post:', {
       postId,
       title,
       subredditName,
-      splash: splash ? 'with splash' : 'no splash'
+      shareImage: styles?.shareImageUrl ? 'yes' : 'no'
     });
 
     // In testbed mode, store post metadata for the feed page
@@ -971,7 +971,7 @@ export const reddit = {
       const now = new Date().toISOString();
       const creator = context.userId || 'testuser';
 
-      // Store post metadata including screenshot from splash
+      // Store post metadata including screenshot from styles
       const promises = [
         client.set(`post:${postId}:title`, title),
         client.set(`post:${postId}:created`, now),
@@ -980,10 +980,10 @@ export const reddit = {
         redis.zAdd(`testbed:posts`, { score: Date.now(), member: postId })
       ];
 
-      // Store screenshot if provided in splash
-      if (splash?.backgroundUri) {
-        promises.push(client.set(`post:${postId}:screenshot`, splash.backgroundUri));
-        console.log('[TESTBED] Storing screenshot for post:', postId, 'size:', splash.backgroundUri.length);
+      // Store screenshot if provided as share image
+      if (styles?.shareImageUrl) {
+        promises.push(client.set(`post:${postId}:screenshot`, styles.shareImageUrl));
+        console.log('[TESTBED] Storing screenshot for post:', postId, 'size:', styles.shareImageUrl.length);
       }
 
       await Promise.all(promises);
