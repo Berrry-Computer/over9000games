@@ -1,5 +1,8 @@
 import { createGameGenerationPrompt, parseMarkdownResponse } from '../shared/game-prompt.js';
+import { createFixPrompt } from '../shared/game-prompt-common.js';
 import { HeadlessGameRunner } from './headless-game-runner.js';
+
+const INSTRUCTIONS = 'You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
 
 export class ResponsesAPI {
   constructor(apiKey) {
@@ -13,10 +16,26 @@ export class ResponsesAPI {
 
     console.log(`Creating OpenAI response with model ${model}:`, description.substring(0, 100) + '...');
 
+    return this.submitResponse({ model, input: prompt });
+  }
+
+  // Continue the same conversation with a report of why the game failed to start
+  async createFixResponse(previousResponseId, model, failure) {
+    console.log(`Requesting fix for response ${previousResponseId}: ${failure}`);
+
+    return this.submitResponse({
+      model,
+      previous_response_id: previousResponseId,
+      input: createFixPrompt(failure)
+    });
+  }
+
+  async submitResponse({ model, ...request }) {
     const requestBody = {
       model,
-      input: prompt,
-      instructions: 'You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().',
+      ...request,
+      // Instructions are not carried over by previous_response_id, so always send them
+      instructions: INSTRUCTIONS,
       max_output_tokens: 24000,
       background: true
     };
@@ -74,8 +93,21 @@ export class ResponsesAPI {
       const outputText = messageItem?.content?.[0]?.text;
 
       if (outputText && typeof outputText === 'string') {
-        const gameDefinition = parseMarkdownResponse(outputText);
+        let gameDefinition;
+        try {
+          gameDefinition = parseMarkdownResponse(outputText);
+        } catch (parseError) {
+          return { status: 'needs_fix', error: `Could not find the game code in your reply: ${parseError.message}` };
+        }
         console.log(`Successfully parsed game definition for response ${responseId}`);
+
+        // Make sure the game actually starts before handing it to the player
+        const smoke = await this.gameRunner.smokeTest(gameDefinition.gameCode);
+        if (!smoke.ok) {
+          const where = smoke.frame === undefined ? 'while loading' : `at frame ${smoke.frame}`;
+          console.error(`Response ${responseId} failed smoke test ${where}: ${smoke.error}`);
+          return { status: 'needs_fix', error: `${smoke.error} (${where})` };
+        }
 
         // Extract metadata by running game code in QuickJS
         const metadata = await this.gameRunner.extractMetadata(gameDefinition.gameCode);

@@ -97,6 +97,21 @@ Return the complete modified game code, not just the changes.
   }
 }
 
+// Follow-up turn when a generated game fails to start in the headless console
+export function createFixPrompt(failure) {
+  return `
+<test-result>
+The game you wrote failed when the console ran it with scripted input (1s idle, then start, run, jump, fire):
+${failure}
+</test-result>
+
+<task>
+Fix the problem and return the complete corrected game as a single \`\`\`javascript block with metadata(), resources(), and update().
+The game must wait for the player at the start, not end on its own.
+</task>
+`;
+}
+
 export function parseMarkdownResponse(response) {
   // Extract single JavaScript block (global functions format)
   const jsMatch = response.match(/```javascript\s*([\s\S]*?)\s*```/);

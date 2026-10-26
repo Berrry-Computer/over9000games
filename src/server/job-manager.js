@@ -82,6 +82,15 @@ export class JobManager {
     });
   }
 
+  async markJobFixing(jobId, openaiResponseId, fixAttempts, lastError) {
+    await this.updateJob(jobId, {
+      status: 'polling',
+      openaiResponseId,
+      fixAttempts: String(fixAttempts),
+      lastError
+    });
+  }
+
   async markJobCompleted(jobId, gameDefinition) {
     await this.updateJob(jobId, {
       status: 'completed',

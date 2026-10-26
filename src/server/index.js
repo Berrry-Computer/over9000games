@@ -22,6 +22,9 @@ const jobManager = new JobManager(redis);
 // Initialize draft manager
 const draftManager = new DraftManager(redis);
 
+// Follow-up turns allowed when a generated game fails to start
+const MAX_FIX_ATTEMPTS = 2;
+
 
 // Middleware for JSON body parsing
 app.use(express.json());
@@ -368,6 +371,21 @@ router.get("/api/jobs/:jobId", async (req, res) => {
             job.status = 'completed';
             job.gameDefinition = openaiStatus.gameDefinition;
             console.log(`Job ${jobId} completed via client-driven polling`);
+          } else if (openaiStatus.status === 'needs_fix') {
+            // Game didn't start - ask the model to fix it in the same conversation
+            const fixAttempts = parseInt(job.fixAttempts || '0');
+            if (fixAttempts < MAX_FIX_ATTEMPTS) {
+              const fix = await responsesAPI.createFixResponse(job.openaiResponseId, job.model, openaiStatus.error);
+              await jobManager.markJobFixing(jobId, fix.id, fixAttempts + 1, openaiStatus.error);
+              job.openaiResponseId = fix.id;
+              job.fixAttempts = String(fixAttempts + 1);
+              console.log(`Job ${jobId} fix attempt ${fixAttempts + 1}: ${openaiStatus.error}`);
+            } else {
+              const error = new Error(`Generated game failed to start after ${fixAttempts} fix attempts: ${openaiStatus.error}`);
+              await jobManager.markJobFailed(jobId, error);
+              job.status = 'failed';
+              job.error = error.message;
+            }
           } else if (openaiStatus.status === 'failed') {
             // Update job as failed
             await jobManager.markJobFailed(jobId, new Error(openaiStatus.error));
@@ -393,6 +411,7 @@ router.get("/api/jobs/:jobId", async (req, res) => {
     // Add progress for in-progress jobs
     if (job.status === 'in_progress' || job.status === 'polling') {
       response.progress = job.progress;
+      response.fixAttempts = parseInt(job.fixAttempts || '0');
       response.estimatedRemaining = Math.max(0,
         jobManager.getEstimatedTime(job.model) - Math.floor((Date.now() - parseInt(job.startedAt || job.createdAt)) / 1000)
       );

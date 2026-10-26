@@ -20,7 +20,13 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createGameGenerationPromptWithSamples, parseMarkdownResponse } from '../src/shared/game-prompt-common.js';
+import { createGameGenerationPromptWithSamples, createFixPrompt, parseMarkdownResponse } from '../src/shared/game-prompt-common.js';
+import { HeadlessGameRunner } from '../src/server/headless-game-runner.js';
+
+// Keep in sync with src/server/responses-api.js
+const INSTRUCTIONS = 'You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
+const MAX_OUTPUT_TOKENS = 24000;
+const MAX_FIX_ATTEMPTS = 2;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,7 +114,7 @@ function ensureOutputDir(outputDir) {
 
 
 // Generate game using OpenRouter
-async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir, fullPrompt) {
+async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir, messages) {
   log(`Generating game with ${model}...`, 'info', verbose);
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -121,18 +127,8 @@ async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir,
     },
     body: JSON.stringify({
       model: model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a retro game designer that creates NES-style games. You must respond with a JSON block in markdown format (```json) followed by a JavaScript block (```javascript) containing the updateCode function.'
-        },
-        {
-          role: 'user',
-          content: fullPrompt
-        }
-      ],
-      max_tokens: 8000,
-      temperature: 0.7
+      messages: [{ role: 'system', content: INSTRUCTIONS }, ...messages],
+      max_tokens: MAX_OUTPUT_TOKENS
     })
   });
 
@@ -146,6 +142,10 @@ async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir,
   const responseFile = saveRawResponse(JSON.stringify(data, null, 2), model, outputDir, prompt, verbose);
 
   const rawResponse = data.choices[0].message.content;
+  if (data.usage) {
+    log(`${model} usage: ${data.usage.prompt_tokens} in / ${data.usage.completion_tokens} out` +
+      (data.usage.cost !== undefined ? ` / $${data.usage.cost.toFixed(4)}` : ''), 'info');
+  }
 
   // 2) Try to parse game definition
   try {
@@ -159,60 +159,6 @@ async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir,
     console.log('--- END RAW RESPONSE ---\n');
     throw parseError;
   }
-}
-
-// Validate game definition using eval (for QuickJS-style global functions)
-async function validateGameDefinition(gameDefinition) {
-  const errors = [];
-
-  try {
-    // Create a sandbox to execute the game code
-    const sandbox = {};
-
-    // Execute the game code in a controlled context
-    const func = new Function('sandbox', `
-      ${gameDefinition.gameCode}
-
-      // Return the functions for validation
-      return {
-        metadata: typeof metadata !== 'undefined' ? metadata : undefined,
-        resources: typeof resources !== 'undefined' ? resources : undefined,
-        update: typeof update !== 'undefined' ? update : undefined
-      };
-    `);
-
-    const gameModule = func(sandbox);
-
-    // Test metadata
-    if (!gameModule.metadata) {
-      errors.push('metadata() function not found');
-    } else {
-      const meta = gameModule.metadata();
-      if (!meta.title) errors.push('metadata() missing title');
-      if (!meta.description) errors.push('metadata() missing description');
-    }
-
-    // Test resources
-    if (!gameModule.resources) {
-      errors.push('resources() function not found');
-    } else {
-      const res = gameModule.resources();
-      if (!Array.isArray(res.sprites)) errors.push('resources() sprites must be an array');
-    }
-
-    // Test update function
-    if (!gameModule.update) {
-      errors.push('update() function not found');
-    } else {
-      const commands = gameModule.update(0, {});
-      if (typeof commands !== 'object') errors.push('update() must return an object');
-    }
-
-  } catch (execError) {
-    errors.push('Failed to execute gameCode: ' + execError.message);
-  }
-
-  return errors;
 }
 
 // Save generated game to file
@@ -282,19 +228,36 @@ async function main() {
     const promptFile = saveRawResponse(fullPrompt, model, options.output, options.prompt, options.verbose, 'prompt');
 
     try {
-      const result = await generateWithOpenRouter(model, options.prompt, openrouterKey, options.verbose, options.output, fullPrompt);
-      const duration = Date.now() - startTime;
+      // Same flow as the server: generate, smoke test, then follow-up turns to fix
+      const messages = [{ role: 'user', content: fullPrompt }];
+      const runner = new HeadlessGameRunner();
+      let gameDefinition;
+      let validationErrors = [];
+      let fixAttempts = 0;
 
-      rawResponse = result.rawResponse;
-      const gameDefinition = result.gameDefinition;
-      responseFile = result.responseFile;
+      for (;;) {
+        const result = await generateWithOpenRouter(model, options.prompt, openrouterKey, options.verbose, options.output, messages);
+        rawResponse = result.rawResponse;
+        gameDefinition = result.gameDefinition;
+        responseFile = result.responseFile;
 
-      const validationErrors = await validateGameDefinition(gameDefinition);
-      if (validationErrors.length > 0) {
-        log(`${model} validation errors: ${validationErrors.join(', ')}`, 'error');
-      } else {
-        log(`${model} game definition is valid`, 'success');
+        const smoke = await runner.smokeTest(gameDefinition.gameCode);
+        if (smoke.ok) {
+          validationErrors = [];
+          log(`${model} game starts and survives scripted play` + (fixAttempts ? ` after ${fixAttempts} fix(es)` : ''), 'success');
+          break;
+        }
+
+        const where = smoke.frame === undefined ? 'while loading' : `at frame ${smoke.frame}`;
+        validationErrors = [`${smoke.error} (${where})`];
+        log(`${model} smoke test failed: ${validationErrors[0]}`, 'error');
+        if (fixAttempts >= MAX_FIX_ATTEMPTS) break;
+
+        fixAttempts++;
+        messages.push({ role: 'assistant', content: rawResponse }, { role: 'user', content: createFixPrompt(validationErrors[0]) });
+        log(`${model} requesting fix ${fixAttempts}/${MAX_FIX_ATTEMPTS}...`, 'info');
       }
+      const duration = Date.now() - startTime;
 
       const filepaths = saveGame(gameDefinition, model, options.output, options.prompt, fullPrompt, options.verbose);
 
@@ -305,6 +268,7 @@ async function main() {
         success: true,
         duration,
         validationErrors,
+        fixAttempts,
         filepaths: { ...filepaths, responseFile, promptFile },
         gameDefinition
       };
@@ -342,10 +306,9 @@ async function main() {
     console.log(`\n${model}: ${result.success ? '✅ SUCCESS' : '❌ FAILED'}`);
     if (result.success) {
       console.log(`  Duration: ${result.duration}ms`);
-      console.log(`  Validation errors: ${result.validationErrors.length}`);
+      console.log(`  Starts: ${result.validationErrors.length ? '❌ ' + result.validationErrors[0] : '✅'}${result.fixAttempts ? ` (after ${result.fixAttempts} fix turn(s))` : ''}`);
       console.log(`  Game file: ${result.filepaths.gameFile}`);
       console.log(`  Prompt file: ${result.filepaths.promptFile}`);
-      console.log(`  Game: ${result.gameDefinition.name}`);
     } else {
       console.log(`  Error: ${result.error}`);
     }
