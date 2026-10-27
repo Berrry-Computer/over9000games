@@ -14,7 +14,8 @@ export default defineConfig({
     exclude: ['quickjs-emscripten']
   },
   build: {
-    outDir: "../../dist/client",
+    outDir: "../../dist/testbed",
+    emptyOutDir: true,
     minify: false,
     rollupOptions: {
       output: {

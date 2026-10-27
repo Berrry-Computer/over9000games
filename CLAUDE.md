@@ -15,11 +15,11 @@ This is a Devvit web application that implements a retro NES-style game console 
 - **Scripts** (`scripts/`): AI model testing and game generation tools
 
 ### Core Systems
-- **NES Console**: 128×128 viewport, 128×16 tile world, 4-bit color, 8×8 sprites/tiles, scrolling support
+- **NES Console**: 128×128 viewport, 4-bit color, 8×8 sprites/tiles; layers: background → tilemap (up to 256×256, persistent) → legacy tiles[] → sprites → text (16×16 HUD grid)
 - **QuickJS Engine**: Sandboxed JavaScript execution for user-generated games
 - **AI Generation**: Async job-based OpenAI/Gemini integration for game creation
 - **Game Schema**: Validation system for sprites, palettes, and game logic
-- **Audio System**: 8-slot NES-style audio with 4 channels (pulse1, pulse2, triangle, noise)
+- **Audio System**: 8-slot NES-style sound effects plus a music sequencer for songs declared in `resources().music`; 4 channels (pulse1, pulse2, triangle, noise)
 - **Leaderboard**: Redis-based high score tracking with top 10 display
 - **Draft System**: Persistent game drafts with version history and job recovery
 
@@ -101,10 +101,10 @@ function update(deltaTime, input) {
 ```
 
 ### NES Console Rendering
-- Display: 128×128 viewport, 128×16 tile world (supports side-scrolling up to 1024px wide)
+- Display: 128×128 viewport; `resources().tilemap` levels up to 256×256 tiles, edited with `bg` and scrolled by `scroll`/`bgScroll`; `text` layer for HUD ignores scroll
 - Sprites: Hex string arrays defining 8×8 pixel graphics with direct palette indexing
 - State-based: Games return state objects, console processes and renders
-- Camera: Automatic viewport culling based on scroll offset
+- Shared state and renderer: `ConsoleState` + `ConsoleRenderer` draw the client canvas, server screenshots and golden-frame tests with the same code
 - Performance: Single-pass canvas rendering with pre-compiled sprite sheets
 
 ### Devvit Integration
@@ -180,26 +180,31 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **QuickJS Game Runner**: `src/client/game-runner.js` - Client-side sandboxed game execution
 - **Headless Game Runner**: `src/server/headless-game-runner.js` - Server-side game runner for screenshots
 - **Screenshot Renderer**: `src/server/screenshot-renderer.js` - PNG screenshot generation
+- **Console State**: `src/shared/console-state.js` - Video layers (tilemap, tiles, sprites, text) and resource validation
+- **Console Renderer**: `src/shared/console-renderer.js` - Pixel renderer shared by client and server
+- **Music Sequencer**: `src/shared/music.js` - Song parsing and note scheduling
 - **Game Parsing**: `src/shared/game-prompt.js` - Parses LLM markdown responses
 - **Game Runner Common**: `src/shared/game-runner-common.js` - Shared game execution logic
 - **Audio Manager**: `src/client/audio/audio-manager.js` - NES-style audio system
-- **Bitmap Font**: `src/client/bitmap-font.js` - Pre-rendered font sprite generation
+- **Bitmap Font**: `src/shared/bitmap-font.js` - Pre-rendered font sprite generation
 - **Post Management**: `src/server/core/post.js` - Reddit post creation and management
 - **Test Games**: `src/shared/test-games/` - Manual test games for development (pong.js, platformer.js)
 - **Testbed**: `src/testbed/` - Local testing environment with Devvit mocks
 - **Generation Testing**: `scripts/test-generation.js` - AI model testing script
+- **Golden Frames**: `scripts/golden-frames.js` - Checks old games still render pixel-identical to the original client (`--check scripts/goldens.json` for the examples)
+- **Console Tests**: `scripts/test-console.js` - Tilemap, text layer and music sequencer checks
 
 ### Game Development Constraints
 - **Sprite Limits**: Maximum 64 sprites on screen, 8×8 pixels each, cleared each frame
 - **Sprite Flipping**: Sprites support `flipH` and `flipV` properties for horizontal/vertical mirroring
-- **Font Sprites**: Pre-rendered font available at sprite IDs 0x100+ for HUD text rendering
-- **Tile System**: 128×16 grid of background tiles (8×8 pixels each), cleared each frame
+- **Font Sprites**: Pre-rendered font available at sprite IDs 0x100+; the `text` layer takes strings directly
+- **Tile System**: `resources().tilemap` is kept by the console and edited with `bg: [{x, y, tileId}]`; legacy `tiles[]` (128×16, cleared each frame) still works for old games but is no longer taught in the prompt
 - **Color Palette**: Maximum 16 colors per game (4-bit)
 - **Audio Slots**: 8 sound slots, 4 channels (pulse1, pulse2, triangle, noise)
 - **Audio Features**: Sound IDs prevent restart, envelope presets (sharp/soft/fade/sustain), noise modes (random/periodic)
 - **QuickJS Sandbox**: No external dependencies, limited execution time
 - **State-Based Rendering**: Return state objects, no direct canvas access
-- **Camera System**: Scroll offset for side-scrolling worlds up to 1024px wide
+- **Camera System**: `scroll` moves sprites and the tilemap in both directions; `bgScroll` overrides the tilemap scroll; `textScroll` offsets the text layer
 - **Lives System**: If implementing lives, trigger game over when lives reach 0 (not below 0) to avoid stuck states where player can't respawn
 
 ### Debugging Tips

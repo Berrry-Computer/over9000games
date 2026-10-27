@@ -1,14 +1,11 @@
 import { getQuickJS } from "quickjs-emscripten";
 import { validateGameSchema, sanitizeGameDefinition } from "../shared/game-schema.js";
-import { renderBitmapText, renderCenteredBitmapText, generateFontTileSprites } from "./bitmap-font.js";
+import { renderBitmapText, renderCenteredBitmapText } from "../shared/bitmap-font.js";
 import { AudioManager } from "./audio/audio-manager.js";
-import {
-  QuickJSGameExecutor,
-  getSpritePosition,
-  getDefaultPalette,
-  MAX_TILES_X,
-  MAX_TILES_Y
-} from "../shared/game-runner-common.js";
+import { QuickJSGameExecutor, getDefaultPalette } from "../shared/game-runner-common.js";
+import { ConsoleState } from "../shared/console-state.js";
+import { ConsoleRenderer } from "../shared/console-renderer.js";
+import { MusicPlayer } from "../shared/music.js";
 
 // Unified game state enum
 const GameState = {
@@ -19,34 +16,30 @@ const GameState = {
 };
 
 export class GameRunner {
-  constructor(canvasId, spriteCanvasId) {
+  constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
-    this.spriteCanvas = document.getElementById(spriteCanvasId);
 
-    if (!this.canvas || !this.spriteCanvas) {
-      throw new Error("Canvas elements not found");
+    if (!this.canvas) {
+      throw new Error("Canvas element not found");
     }
 
     this.ctx = this.canvas.getContext("2d");
-    this.spriteCtx = this.spriteCanvas.getContext("2d");
-
     this.ctx.imageSmoothingEnabled = false;
-    this.spriteCtx.imageSmoothingEnabled = false;
 
-    // Support larger worlds for scrolling: 128 tiles wide × 16 tall (1024px × 128px)
     this.state = {
-      sprites: Array(64).fill(null).map(() => ({ spriteId: -1, x: 0, y: 0, flipH: false, flipV: false })),
-      tiles: Array(MAX_TILES_Y).fill(null).map(() => Array(MAX_TILES_X).fill(-1)),
-      backgroundColor: 0,
       palette: getDefaultPalette(),
       gameState: GameState.STOPPED, // Unified state machine
       score: 0,
-      finalScore: 0,
-      scroll: { x: 0, y: 0 }
+      finalScore: 0
     };
 
-    this.maxTilesX = MAX_TILES_X;
-    this.maxTilesY = MAX_TILES_Y;
+    // Video layers (tilemap, tiles, sprites, text) and the shared pixel renderer
+    this.console = new ConsoleState();
+    this.renderer = new ConsoleRenderer();
+    this.frameImage = new ImageData(this.renderer.pixels, 128, 128);
+
+    this.music = new MusicPlayer();
+    this.lastDeltaTime = 0;
 
     this.leaderboardLoading = false;
     this.loadingAnimationFrame = 0;
@@ -358,91 +351,11 @@ export class GameRunner {
 
   loadGame(gameDefinition) {
     this.gameDefinition = gameDefinition;
-    this.state.palette = gameDefinition.palette;
-    this.preRenderSprites();
+    this.console = new ConsoleState(gameDefinition);
+    this.state.palette = this.console.palette;
+    this.renderer.loadResources(gameDefinition.sprites, this.console.palette);
     this.state.score = 0;
     this.resetGame();
-  }
-
-  preRenderSprites() {
-    if (!this.gameDefinition) return;
-
-    // Sprite sheet is 128×256 (supports IDs 0-511)
-    this.spriteCtx.fillStyle = '#000000';
-    this.spriteCtx.fillRect(0, 0, 128, 256);
-
-    // Render game sprites (typically IDs 0-63)
-    if (Array.isArray(this.gameDefinition.sprites)) {
-      this.gameDefinition.sprites.forEach((sprite, index) => {
-        this.renderSpriteToSheet(sprite, index);
-      });
-    }
-
-    // Pre-render font tiles (IDs 0x100+)
-    this.preRenderFontTiles();
-  }
-
-  preRenderFontTiles() {
-    // Generate font sprites using palette color 1 (typically white)
-    const fontTiles = generateFontTileSprites(1);
-
-    fontTiles.forEach(({tileId, sprite}) => {
-      this.renderSpriteToSheet(sprite, tileId);
-    });
-  }
-
-  renderSpriteToSheet(sprite, index) {
-    const imageData = this.spriteCtx.createImageData(8, 8);
-    const data = imageData.data;
-
-    for (let y = 0; y < 8; y++) {
-      const row = sprite[y];
-      for (let x = 0; x < 8; x++) {
-        const colorIndex = parseInt(row[x], 16);
-        const color = this.state.palette[colorIndex] || 0x000000;
-        const dataIndex = (y * 8 + x) * 4;
-
-        data[dataIndex] = (color >> 16) & 0xFF;
-        data[dataIndex + 1] = (color >> 8) & 0xFF;
-        data[dataIndex + 2] = color & 0xFF;
-        data[dataIndex + 3] = colorIndex === 0 ? 0 : 255;
-      }
-    }
-
-    const position = getSpritePosition(index);
-    this.spriteCtx.putImageData(imageData, position.x, position.y);
-  }
-
-  setSprite(slotId, spriteId, x, y, flipH = false, flipV = false) {
-    if (slotId >= 0 && slotId < 64) {
-      this.state.sprites[slotId] = { spriteId: spriteId, x, y, flipH, flipV };
-    }
-  }
-
-  clearSprite(slotId) {
-    if (slotId >= 0 && slotId < 64) {
-      this.state.sprites[slotId] = { spriteId: -1, x: 0, y: 0, flipH: false, flipV: false };
-    }
-  }
-
-  setTile(x, y, tileId) {
-    if (x >= 0 && x < this.maxTilesX && y >= 0 && y < this.maxTilesY) {
-      this.state.tiles[y][x] = tileId;
-    }
-  }
-
-  clearTile(x, y) {
-    if (x >= 0 && x < this.maxTilesX && y >= 0 && y < this.maxTilesY) {
-      this.state.tiles[y][x] = -1;
-    }
-  }
-
-  setBackgroundColor(colorIndex) {
-    this.state.backgroundColor = colorIndex;
-  }
-
-  setPalette(_paletteId, colors) {
-    this.state.palette = colors;
   }
 
   isPressed(button) {
@@ -498,6 +411,7 @@ export class GameRunner {
 
   stopGame(options = {}) {
     this.state.gameState = GameState.STOPPED;
+    this.stopMusic();
     this.hideLeaderboard();
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
@@ -543,20 +457,12 @@ export class GameRunner {
   }
 
   resetGame() {
-    for (let i = 0; i < 64; i++) {
-      this.state.sprites[i] = { spriteId: -1, x: 0, y: 0, flipH: false, flipV: false };
-    }
-
-    for (let y = 0; y < this.maxTilesY; y++) {
-      for (let x = 0; x < this.maxTilesX; x++) {
-        this.state.tiles[y][x] = -1;
-      }
-    }
+    this.console.reset();
+    this.music = new MusicPlayer(this.gameDefinition?.music);
+    this.stopMusic();
 
     this.state.score = 0;
-    this.state.backgroundColor = 0;
     this.state.gameState = GameState.STOPPED;
-    this.state.scroll = { x: 0, y: 0 };
 
     if (this.gameDefinition && this.gameDefinition.initialState) {
       Object.assign(this.state, this.gameDefinition.initialState);
@@ -609,6 +515,7 @@ export class GameRunner {
   handleGameOver() {
     this.state.gameState = GameState.GAME_OVER;
     this.state.finalScore = this.state.score;
+    this.stopMusic();
 
     console.log(`Game Over! Final Score: ${this.state.finalScore}`);
 
@@ -650,6 +557,7 @@ export class GameRunner {
       try {
         const commands = this.executeGameUpdate();
         this.processCommands(commands);
+        this.advanceMusic();
       } catch (error) {
         console.error("Game update error:", error);
         this.stopGame({ message: "Game crashed: " + error.message, title: "Error" });
@@ -669,9 +577,7 @@ export class GameRunner {
 
     // Update debug panel state (throttled to avoid performance impact)
     if (this.debugPanel && this.frameCount % 10 === 0) {
-      const spriteCount = this.state.sprites.filter(s => s.spriteId >= 0).length;
-      const tileCount = this.state.tiles.reduce((sum, row) =>
-        sum + row.filter(t => t >= 0).length, 0);
+      const { spriteCount, tileCount } = this.console.getStats();
 
       this.debugPanel.updateState({
         score: this.state.score,
@@ -680,8 +586,8 @@ export class GameRunner {
         fps: this.lastFrameTime ? 1000 / ((performance.now() - this.lastFrameTime) * 10) : 60,
         spriteCount,
         tileCount,
-        scrollX: this.state.scroll.x,
-        scrollY: this.state.scroll.y,
+        scrollX: this.console.scroll.x,
+        scrollY: this.console.scroll.y,
         renderTime
       });
     }
@@ -705,6 +611,7 @@ export class GameRunner {
       const currentTime = performance.now();
       const deltaTime = this.lastFrameTime ? (currentTime - this.lastFrameTime) / 1000 : 0;
       this.lastFrameTime = currentTime;
+      this.lastDeltaTime = deltaTime;
 
       const inputState = this.getInputState();
 
@@ -744,48 +651,10 @@ export class GameRunner {
   processCommands(commands) {
     if (!commands) return;
 
-    // Clear sprites every frame
-    for (let i = 0; i < 64; i++) {
-      this.clearSprite(i);
-    }
+    this.console.apply(commands);
 
-    // Clear tiles every frame
-    for (let y = 0; y < this.maxTilesY; y++) {
-      for (let x = 0; x < this.maxTilesX; x++) {
-        this.state.tiles[y][x] = -1;
-      }
-    }
-
-    if (commands.sprites && Array.isArray(commands.sprites)) {
-      commands.sprites.forEach((sprite, index) => {
-        if (index < 64) {
-          this.setSprite(
-            index,
-            sprite.spriteId,
-            sprite.x,
-            sprite.y,
-            sprite.flipH || false,
-            sprite.flipV || false
-          );
-        }
-      });
-    }
-
-    if (commands.tiles && Array.isArray(commands.tiles)) {
-      commands.tiles.forEach(tile => {
-        this.setTile(tile.x, tile.y, tile.tileId);
-      });
-    }
-
-    if (commands.background !== undefined) {
-      this.setBackgroundColor(commands.background);
-    }
-
-    if (commands.scroll !== undefined) {
-      this.state.scroll = {
-        x: commands.scroll.x || 0,
-        y: commands.scroll.y || 0
-      };
+    if (commands.music !== undefined && this.music.play(commands.music)) {
+      this.audioManager.stopMusic();
     }
 
     if (commands.score !== undefined) {
@@ -843,6 +712,18 @@ export class GameRunner {
     }
   }
 
+  advanceMusic() {
+    const notes = this.music.advance(this.lastDeltaTime);
+    if (this.audioInitialized) {
+      notes.forEach(note => this.audioManager.playMusicNote(note));
+    }
+  }
+
+  stopMusic() {
+    this.music.stop();
+    this.audioManager.stopMusic();
+  }
+
   showMessage(message, title = null) {
     // Store message to be displayed
     this.displayMessage = message;
@@ -852,18 +733,14 @@ export class GameRunner {
   }
 
   render() {
-    const bgColor = this.state.palette[this.state.backgroundColor] || 0x000000;
-    this.ctx.fillStyle = `#${bgColor.toString(16).padStart(6, '0')}`;
-    this.ctx.fillRect(0, 0, 128, 128);
-
     // If there's a message to display, show it instead of game
     if (this.displayMessage && this.state.gameState === GameState.STOPPED) {
       this.renderMessageOverlay();
       return;
     }
 
-    this.renderTiles();
-    this.renderSprites();
+    this.renderer.render(this.console);
+    this.ctx.putImageData(this.frameImage, 0, 0);
 
     // Render leaderboard overlay when paused or game over
     if (this.state.gameState === GameState.PAUSED ||
@@ -911,83 +788,6 @@ export class GameRunner {
       yPos += 12;
     }
   }
-
-  renderTiles() {
-    const scrollX = this.state.scroll.x;
-    const scrollY = this.state.scroll.y;
-
-    for (let y = 0; y < this.maxTilesY; y++) {
-      for (let x = 0; x < this.maxTilesX; x++) {
-        const tileId = this.state.tiles[y][x];
-        if (tileId >= 0) {
-          // Convert world tile coordinates to screen pixel coordinates
-          const screenX = x * 8 - scrollX;
-          const screenY = y * 8 - scrollY;
-
-          // Cull tiles outside viewport
-          if (screenX < -8 || screenX >= 128 || screenY < -8 || screenY >= 128) {
-            continue;
-          }
-
-          const position = getSpritePosition(tileId);
-          this.ctx.drawImage(
-            this.spriteCanvas,
-            position.x, position.y, position.width, position.height,
-            screenX, screenY, position.width, position.height
-          );
-        }
-      }
-    }
-  }
-
-  renderSprites() {
-    const scrollX = this.state.scroll.x;
-    const scrollY = this.state.scroll.y;
-
-    for (let i = 0; i < 64; i++) {
-      const sprite = this.state.sprites[i];
-      if (sprite.spriteId >= 0) {
-        // Convert world coordinates to screen coordinates
-        const screenX = Math.round(sprite.x - scrollX);
-        const screenY = Math.round(sprite.y - scrollY);
-
-        // Cull sprites outside viewport
-        if (screenX < -8 || screenX >= 128 || screenY < -8 || screenY >= 128) {
-          continue;
-        }
-
-        const position = getSpritePosition(sprite.spriteId);
-
-        // Apply sprite flipping if needed
-        if (sprite.flipH || sprite.flipV) {
-          this.ctx.save();
-
-          // Move to sprite center
-          this.ctx.translate(screenX + 4, screenY + 4);
-
-          // Apply flipping
-          this.ctx.scale(sprite.flipH ? -1 : 1, sprite.flipV ? -1 : 1);
-
-          // Draw sprite centered at origin
-          this.ctx.drawImage(
-            this.spriteCanvas,
-            position.x, position.y, position.width, position.height,
-            -4, -4, position.width, position.height
-          );
-
-          this.ctx.restore();
-        } else {
-          // No flipping - standard draw
-          this.ctx.drawImage(
-            this.spriteCanvas,
-            position.x, position.y, position.width, position.height,
-            screenX, screenY, position.width, position.height
-          );
-        }
-      }
-    }
-  }
-
 
   renderLeaderboardOverlay() {
     // Semi-transparent dark overlay
@@ -1102,7 +902,6 @@ export class GameRunner {
 
   clear() {
     this.ctx.clearRect(0, 0, 128, 128);
-    this.spriteCtx.clearRect(0, 0, 128, 128);
   }
 
   dispose() {
@@ -1141,7 +940,7 @@ export class GameRunner {
       score: this.state.score,
       gameOver: this.state.gameState === GameState.GAME_OVER,
       frame: this.frameCount,
-      scroll: this.state.scroll
+      scroll: this.console.scroll
     };
   }
 
@@ -1162,9 +961,9 @@ export class GameRunner {
 
 let gameRunner = null;
 
-export function getGameRunner(canvasId, spriteCanvasId) {
+export function getGameRunner(canvasId) {
   if (!gameRunner) {
-    gameRunner = new GameRunner(canvasId, spriteCanvasId);
+    gameRunner = new GameRunner(canvasId);
   }
   return gameRunner;
 }

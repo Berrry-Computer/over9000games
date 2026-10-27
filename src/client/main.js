@@ -54,7 +54,7 @@ let currentHighScores = [];
 
 function initializeConsole() {
   try {
-    gameRunner = getGameRunner("console-canvas", "sprite-canvas");
+    gameRunner = getGameRunner("console-canvas");
     console.log("Game runner created");
 
     // Connect debug panel to game runner
@@ -153,7 +153,7 @@ async function loadTestGameFromHomepage(gameName) {
   document.querySelector(".action-bar").style.display = "flex";
 
   // Reinitialize game runner with new canvases
-  gameRunner = getGameRunner("console-canvas", "sprite-canvas");
+  gameRunner = getGameRunner("console-canvas");
 
   // Load the test game
   await loadTestGame(gameName);

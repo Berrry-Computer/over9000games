@@ -13,7 +13,7 @@ import { media } from './devvit-media.js';
 export { media };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const clientPath = path.resolve(__dirname, '../../../dist/client');
+const clientPath = path.resolve(__dirname, '../../../dist/testbed');
 const indexPath = path.resolve(clientPath, 'index.html');
 
 // Real Redis client for local development
@@ -249,7 +249,7 @@ export function createServer(app) {
     }
   });
 
-  // Serve static files from dist/client (must be last)
+  // Serve static files from dist/testbed (must be last)
   app.use(express.static(clientPath));
 
   return app;

@@ -4,7 +4,8 @@ function metadata() {
     description: "A classic Pong game with two paddles and a ball",
     controls: [
       {key: "up", action: "move player 1 paddle up"},
-      {key: "down", action: "move player 1 paddle down"}
+      {key: "down", action: "move player 1 paddle down"},
+      {key: "a", action: "serve the ball"}
     ]
   };
 }
@@ -57,7 +58,17 @@ function resources() {
         "00000000"
       ]
     ],
-    palette: [0x000000, 0xFFFFFF, 0xFF0000]
+    palette: [0x000000, 0xFFFFFF, 0xFF0000],
+    // Background music: the console plays the notes, update() just names the song
+    music: {
+      main: {
+        bpm: 150,
+        tracks: [
+          { channel: 'pulse1', volume: 0.12, envelope: 'soft', notes: "E4 G4 A4:2 G4 E4 D4:2 C4 D4 E4 G4 A4:3 -" },
+          { channel: 'triangle', volume: 0.2, envelope: 'sustain', notes: "A2:2 A2:2 G2:2 G2:2 F2:2 F2:2 E2:2 E2:2" }
+        ]
+      }
+    }
   };
 }
 
@@ -76,7 +87,7 @@ const AI_SPEED = 100;
 const BALL_SPEED = 60;
 
 // Game timing
-const GAME_DURATION = 120000; // 2 minutes in milliseconds
+const GAME_DURATION = 120; // 2 minutes in seconds
 
 // Scoring
 const HIT_SCORE = 1;
@@ -93,11 +104,28 @@ function update(deltaTime, input) {
       ball: { x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT / 2, dx: BALL_SPEED, dy: BALL_SPEED },
       score: 0,
       gameOver: false,
-      startTime: Date.now()
+      started: false,
+      playTime: 0 // seconds, accumulated from deltaTime
     };
   }
 
   const sounds = [];
+
+  // Title screen: wait for the player before serving the ball
+  if (!gameState.started) {
+    if (input.aPressed) {
+      gameState.started = true;
+    }
+    return {
+      sprites: [],
+      text: [
+        { x: 4, y: 6, text: "PONG NES" },
+        { x: 4, y: 9, text: "PRESS A" }
+      ],
+      score: 0,
+      gameOver: false
+    };
+  }
 
   // Don't update if game is over
   if (gameState.gameOver) {
@@ -217,26 +245,11 @@ function update(deltaTime, input) {
   }
 
   // Game over after specified duration
-  const playTime = Date.now() - gameState.startTime;
-  if (playTime > GAME_DURATION) {
+  gameState.playTime += deltaTime;
+  if (gameState.playTime > GAME_DURATION) {
     gameState.gameOver = true;
   }
 
-  // Helper function to convert text to font tiles
-  function textToTiles(text, startX, y) {
-    return text.split('').map((char, i) => ({
-      x: startX + i,
-      y: y,
-      tileId: 0x100 + char.charCodeAt(0)
-    }));
-  }
-
-  // Create HUD tiles with score display
-  const scoreText = gameState.score.toString();
-  const tiles = [
-    ...textToTiles("SCORE:", 1, 0),
-    ...textToTiles(scoreText, 8, 0)
-  ];
 
   // Return grouped commands
   return {
@@ -290,7 +303,9 @@ function update(deltaTime, input) {
         y: gameState.ball.y
       }
     ],
-    tiles: tiles,
+    // HUD on the text layer (16x16 screen grid)
+    text: [{ x: 1, y: 0, text: "SCORE:" + gameState.score }],
+    music: 'main',
     score: gameState.score,
     gameOver: gameState.gameOver,
     sounds: sounds

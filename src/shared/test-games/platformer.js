@@ -1,11 +1,12 @@
 function metadata() {
   return {
     title: "Tomb Explorer",
-    description: "Explore ancient ruins and collect treasure - use arrow keys to move and spacebar to jump",
+    description: "Explore ancient ruins, collect treasure and reach the exit",
     controls: [
       {key: "left/right arrows", action: "move explorer"},
       {key: "up arrow or B", action: "jump"},
-      {key: "A button", action: "throw torch"}
+      {key: "down arrow", action: "look down"},
+      {key: "A button", action: "throw torch / start"}
     ]
   };
 }
@@ -188,37 +189,141 @@ function resources() {
         "0d9009d0",
         "00d00d00",
         "00d00d00"
+      ],
+      // Sprites 16-24: backdrop tiles. They are not solid; the console draws them behind everything
+      // Sprite 16: Tomb wall - offset sandstone blocks, mortar shows the black background
+      [
+        "43333330",
+        "33333330",
+        "33333330",
+        "00000000",
+        "33304333",
+        "33303333",
+        "33303333",
+        "00000000"
+      ],
+      // Sprite 17: Tomb wall, cracked
+      [
+        "43333330",
+        "33303330",
+        "33330330",
+        "00000000",
+        "33304333",
+        "33303033",
+        "33303303",
+        "00000000"
+      ],
+      // Sprite 18: Carved eye glyph
+      [
+        "43333330",
+        "33444330",
+        "34404430",
+        "33444330",
+        "33343330",
+        "33433430",
+        "33333330",
+        "00000000"
+      ],
+      // Sprite 19: Carved ankh glyph
+      [
+        "43333330",
+        "33404330",
+        "33404330",
+        "34444430",
+        "33343330",
+        "33343330",
+        "33343330",
+        "00000000"
+      ],
+      // Sprite 20: Wall torch, flame frame 1
+      [
+        "333f3330",
+        "33f6f330",
+        "336f6330",
+        "33363330",
+        "33999330",
+        "33393330",
+        "33393330",
+        "00000000"
+      ],
+      // Sprite 21: Wall torch, flame frame 2 (leaning the other way)
+      [
+        "33f33330",
+        "336f3330",
+        "33f6f330",
+        "33363330",
+        "33999330",
+        "33393330",
+        "33393330",
+        "00000000"
+      ],
+      // Sprite 22: Cave rock bump - mostly open darkness
+      [
+        "00000000",
+        "00000000",
+        "00000000",
+        "000aa000",
+        "00aaaa00",
+        "0aaaaaa0",
+        "00000000",
+        "00000000"
+      ],
+      // Sprite 23: Stalactite hanging from the tile above
+      [
+        "aacccaaa",
+        "0acccca0",
+        "0aacca00",
+        "00acca00",
+        "00aca000",
+        "000ca000",
+        "000a0000",
+        "00000000"
+      ],
+      // Sprite 24: Glowing crystal on the cavern floor
+      [
+        "00000000",
+        "000001b0",
+        "00001bb0",
+        "0b01bba0",
+        "0bb1ba00",
+        "0abbaa00",
+        "aaaaaaa0",
+        "00000000"
       ]
     ],
     palette: [
       0x000000, // 0: Black
       0xFFFFFF, // 1: Pure white (for coin highlights)
       0xCC3300, // 2: Brick red
-      0x556B2F, // 3: Olive drab (unused but kept)
-      0x4A4A4A, // 4: Dark gray (unused but kept)
+      0x22180F, // 3: Tomb wall (dark sandstone in shadow)
+      0x3A2A1B, // 4: Tomb wall highlight / carvings
       0xFFD700, // 5: Bright gold (Mario-style coin)
-      0x5C8A8A, // 6: Muted teal (unused but kept)
+      0xFF7A1A, // 6: Flame orange
       0x6B6B6B, // 7: Medium gray
       0x4A4A4A, // 8: Dark gray/shadow
       0x8B4513, // 9: Saddle brown
-      0x2F4F2F, // a: Dark olive (unused but kept)
-      0xDEB887, // b: Burlywood/light tan
+      0x1B2430, // a: Cave rock (cold blue-gray)
+      0x5FC4E8, // b: Crystal cyan
       0x696969, // c: Dim gray
       0xD2B48C, // d: Tan
       0xCD853F, // e: Peru/bronze
-      0xF5DEB3  // f: Wheat (unused but kept)
-    ]
+      0xFFE36B  // f: Flame yellow
+    ],
+    // Rows can be arrays of tile ids: the level plus backdrop tiles in its empty cells
+    tilemap: { width: 64, height: 32, rows: LEVEL_ROWS.map((row, y) => parseLevelRow(row).map((id, x) => id || backdropTile(x, y))) },
+    music: SONGS
   };
 }
 
 // Game constants
 const SCREEN_WIDTH = 128;
 const SCREEN_HEIGHT = 128;
-const WORLD_WIDTH = 512;  // 64 tiles wide for scrolling
+const WORLD_WIDTH = 512;  // 64 tiles wide
+const WORLD_HEIGHT = 256; // 32 tiles tall: the camera scrolls both ways
 const SPRITE_SIZE = 8;
 const TILE_SIZE = 8;
 const TILES_X = 64;  // Expanded for scrolling
-const TILES_Y = 16;
+const TILES_Y = 32;
 
 // Character dimensions
 const PLAYER_WIDTH = SPRITE_SIZE;
@@ -229,21 +334,37 @@ const COIN_SIZE = SPRITE_SIZE;
 const PROJECTILE_SIZE = SPRITE_SIZE;
 
 // Physics constants (pixels per second)
-const PLAYER_SPEED = 80;
-const GRAVITY = 400;
-const JUMP_POWER = 120; // Reduced from 200 to prevent jumping over obstacles
+const PLAYER_SPEED = 64;        // Top running speed (half a screen per second)
+const PLAYER_ACCEL = 360;       // Ground acceleration toward top speed
+const PLAYER_DECEL = 480;       // Ground friction when no direction is held
+const PLAYER_TURN_DECEL = 720;  // Braking when pushing against current direction
+const AIR_CONTROL = 0.6;        // Fraction of ground acceleration available in the air
+const GRAVITY = 520;            // Gravity while rising with jump held
+const GRAVITY_RELEASED = 1200;  // Gravity while rising after jump is released (short hop)
+const GRAVITY_FALL = 760;       // Gravity while falling - snappier descent
+const MAX_FALL_SPEED = 220;
+const JUMP_POWER = 176;         // Full hold reaches about 4 tiles (31px), a tap about 2
+const COYOTE_TIME = 0.08;       // Can still jump this long after walking off a ledge
+const JUMP_BUFFER_TIME = 0.1;   // A press this long before landing still jumps
 const ENEMY_SPEED_1 = 30;
 const ENEMY_SPEED_2 = 25;
 const PROJECTILE_SPEED = 150;
 const PROJECTILE_LIFETIME = 1.0; // seconds
 
 // Animation timing
-const PLAYER_WALK_INTERVAL = 0.2; // seconds
+const PLAYER_WALK_INTERVAL = 0.2; // seconds per frame at top speed
 const ENEMY_WALK_INTERVAL = 0.3; // seconds
 
 // Camera dead zone (horizontal range where player can move without camera following)
 const CAMERA_DEAD_ZONE_LEFT = 40;  // Pixels from left edge of screen before camera moves left
 const CAMERA_DEAD_ZONE_RIGHT = 40; // Pixels from right edge of screen before camera moves right
+// Vertical camera: rests on the last ground the player stood on, leads downward when dropping
+const CAMERA_GROUND_MARGIN = 40;   // Space kept below the ground the player stands on
+const CAMERA_FALL_LOOKAHEAD = 32;  // While dropping, aim to keep the player this far from the top
+const CAMERA_LOOK_DOWN = 24;       // Holding down puts the player this far from the top
+const CAMERA_SMOOTHING = 10;       // How quickly the camera catches up (per second)
+const CAMERA_EDGE = 16;            // The player is never closer than this to the top/bottom edge
+const UPPER_FLOOR_Y = 112;         // The upper level fits the screen exactly above this floor
 
 // Game limits
 const MAX_PROJECTILES = 3;
@@ -251,6 +372,7 @@ const MAX_PROJECTILES = 3;
 // Scoring
 const ENEMY_KILL_SCORE = 100;
 const COIN_SCORE = 50;
+const BRICK_SCORE = 10;
 
 // Starting positions
 const PLAYER_START_X = 16;
@@ -277,94 +399,214 @@ const SPRITE_HEART = 13;
 const SPRITE_EXPLORER_BODY_HURT = 14;   // Damage recoil pose
 const SPRITE_EXPLORER_BODY_DEATH = 15;  // Death/collapsed pose
 
-// Helper function to parse concise melody strings
-// Format: "NOTE:DURATION NOTE:DURATION ..." where - or r = rest (silence)
-// Example: "C4:0.5 -:0.25 E4:0.5 G4:0.25" = C note, rest, E note, G note
-function parseMelody(str) {
-  return str.split(' ').map(token => {
-    const [noteStr, durStr] = token.split(':');
-    const duration = parseFloat(durStr) || 0.25;
+// Backdrop tiles: drawn in the tilemap's empty cells, never solid
+const TILE_WALL = 16;
+const TILE_WALL_CRACKED = 17;
+const TILE_GLYPH_EYE = 18;
+const TILE_GLYPH_ANKH = 19;
+const TILE_WALL_TORCH_1 = 20;
+const TILE_WALL_TORCH_2 = 21;
+const TILE_CAVE_SPECK = 22;
+const TILE_STALACTITE = 23;
+const TILE_CRYSTAL = 24;
 
-    // Check for rest (pause/silence)
-    if (noteStr === '-' || noteStr === 'r') {
-      return { note: null, duration }; // null note = rest
-    }
+// Level: 64x32 tiles, 2 hex chars per tile (00=empty, 06=platform, 09=brick, 0a=metal, 0b=spikes, 0c=exit)
+// Rows 0-15 are the ruins; a shaft near the right end drops into the cavern (rows 16-31) with the exit
+// The console draws it from resources().tilemap; the game keeps its own copy for collisions
+const LEVEL_ROWS = [
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000606060606",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000009090900000000000000000000000000000009090900000000000000000000000009090900000000000000000000000909090000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000090900000000000000000000000000000909000000000000000000000000090900000000000000000000000000090900000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000606060000000000000000000000000000000000000000000006060600000000000000000000000000000006060600000000000000",
+  "00000006060600000000000000000000000000000000000000000606060000000000000000000000000000000006060600000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000b0b0b00000000000000000b0b0b0b0000000000000000000b0b0b0000000000000b0b0b00000000000000000b0b0b000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00060600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060000000606060606",
+  "06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060000000606060606",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000606060606060606060606060000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000606060606060606060606060600000000000000000000000000",
+  "00000000000009090909090909000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a000000000000000000000000000000000000000000000000000000",
+  "000c0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "000c00000000000000000b0b0b0000000000000000000000000000000000000000000000000000000b0b0b0b0b0b0b0b00000000000000000000000000000000",
+  "06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+  "06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+];
 
-    return { note: noteStr, duration };
-  });
+function parseLevelRow(row) {
+  const tiles = [];
+  for (let i = 0; i < row.length; i += 2) tiles.push(parseInt(row.substr(i, 2), 16));
+  return tiles;
 }
 
-// Death melody - sad descending notes with pauses (120 BPM)
-// Using standard note durations: quarter=0.5s, eighth=0.25s, half=1.0s
-const DEATH_MELODY = parseMelody("C4:0.5 -:0.25 B3:0.5 -:0.25 A3:0.5 -:0.25 G3:0.75 -:0.25 F3:1.0");
+// Burning torches on the tomb wall; update() swaps their tiles to make the flames flicker
+const WALL_TORCHES = [4, 14, 26, 36, 46, 54].map(x => ({ x, y: 6 }));
+const TORCH_FLICKER_TIME = 0.18; // seconds per flame frame
+const CAVERN_TOP_ROW = 14;       // The upper floor and everything below it is the cavern
 
-// Background music - structured song with repeating sections (120 BPM)
-// Note durations: whole=2.0, half=1.0, quarter=0.5, eighth=0.25, sixteenth=0.125
-// INTRO → VERSE → CHORUS → VERSE → CHORUS → BRIDGE → CHORUS (finale)
-const MUSIC = {
-  // Bass: Repeating patterns that support the melody structure
-  bass: parseMelody(
-    // Intro bass (4 bars) - ominous entry
-    "A1:0.5 -:0.25 A1:0.5 -:0.25 E2:0.5 -:0.25 A1:0.5 -:0.25 " +
-    // Verse bass pattern (8 bars) - walking quarter notes
-    "A1:0.5 A1:0.5 E2:0.5 A1:0.5 G1:0.5 G1:0.5 D2:0.5 G1:0.5 " +
-    "F1:0.5 F1:0.5 C2:0.5 F1:0.5 E1:0.5 E1:0.5 B1:0.5 E1:0.5 " +
-    // Chorus bass (8 bars) - powerful dotted quarters
-    "A1:0.75 -:0.25 E2:0.5 A1:0.5 G1:0.75 -:0.25 D2:0.5 G1:0.5 " +
-    "F1:0.75 -:0.25 C2:0.5 F1:0.5 E1:0.75 G#1:0.5 A1:0.5 -:0.25 " +
-    // Verse bass (repeat - 8 bars)
-    "A1:0.5 A1:0.5 E2:0.5 A1:0.5 G1:0.5 G1:0.5 D2:0.5 G1:0.5 " +
-    "F1:0.5 F1:0.5 C2:0.5 F1:0.5 E1:0.5 E1:0.5 B1:0.5 E1:0.5 " +
-    // Chorus bass (repeat - 8 bars)
-    "A1:0.75 -:0.25 E2:0.5 A1:0.5 G1:0.75 -:0.25 D2:0.5 G1:0.5 " +
-    "F1:0.75 -:0.25 C2:0.5 F1:0.5 E1:0.75 G#1:0.5 A1:0.5 -:0.25 " +
-    // Bridge bass (4 bars) - tension/discovery
-    "F1:0.25 F1:0.25 C2:0.5 -:0.5 G1:0.25 G1:0.25 D2:0.5 -:0.5 " +
-    // Chorus finale (8 bars) - triumphant ending
-    "A1:0.75 -:0.25 E2:0.5 A1:0.5 G1:0.75 -:0.25 D2:0.5 G1:0.5 " +
-    "F1:0.75 -:0.25 C2:0.5 F1:0.5 E1:0.75 A1:0.75 A1:1.0"
-  ),
+// Which backdrop tile goes in an empty cell: carved tomb wall above, dark cave below
+function backdropTile(x, y) {
+  const solid = (tx, ty) => {
+    const id = ty >= 0 && ty < LEVEL_ROWS.length ? parseInt(LEVEL_ROWS[ty].substr(tx * 2, 2), 16) : 0;
+    return id === TILE_PLATFORM || id === TILE_BRICK || id === TILE_METAL;
+  };
+  const hash = (x * 7 + y * 13 + x * y) % 23; // fixed pseudo-random variety
+  if (y < CAVERN_TOP_ROW) {
+    if (WALL_TORCHES.some(t => t.x === x && t.y === y)) return TILE_WALL_TORCH_1;
+    if (hash === 0) return TILE_GLYPH_EYE;
+    if (hash === 11) return TILE_GLYPH_ANKH;
+    return hash % 5 === 0 ? TILE_WALL_CRACKED : TILE_WALL;
+  }
+  if (solid(x, y - 1) && (y === CAVERN_TOP_ROW + 2 || hash % 3 === 0)) return TILE_STALACTITE;
+  if (solid(x, y + 1) && !solid(x, y - 1) && hash % 4 === 0 && y > 20) return TILE_CRYSTAL;
+  return hash % 9 === 0 ? TILE_CAVE_SPECK : TILE_EMPTY;
+}
 
-  // Melody: Clear song structure with memorable hooks
-  melody: parseMelody(
-    // INTRO (4 bars) - mysterious, sets the mood
-    "A3:0.5 -:0.25 C4:0.5 -:0.25 E4:0.75 -:0.5 E4:0.5 D4:0.5 C4:0.75 -:0.5 " +
+// Music for resources(): the console sequences the notes, update() only picks the song
+// Notes are NOTE:beats, '-' is a rest; at 120 BPM one beat is 0.5s
+const SONGS = {
+  // INTRO -> VERSE -> CHORUS -> VERSE -> CHORUS -> BRIDGE -> CHORUS (finale)
+  main: {
+    bpm: 120,
+    tracks: [
+      {
+        channel: 'pulse1', volume: 0.25, envelope: 'soft',
+        notes:
+          // INTRO (4 bars) - mysterious, sets the mood
+          "A3:1 -:0.5 C4:1 -:0.5 E4:1.5 -:1 E4:1 D4:1 C4:1.5 -:1 " +
 
-    // VERSE (8 bars) - sneaking through the tomb, main exploration theme
-    "A3:0.5 -:0.25 C4:0.25 -:0.25 E4:0.5 E4:0.25 D4:0.25 C4:0.5 -:0.25 " +
-    "G3:0.5 -:0.25 B3:0.25 -:0.25 D4:0.5 D4:0.25 C4:0.25 B3:0.5 -:0.25 " +
-    "A3:0.5 -:0.25 C4:0.25 -:0.25 E4:0.5 E4:0.25 F4:0.25 E4:0.5 -:0.25 " +
-    "D4:0.5 C4:0.5 B3:0.5 A3:0.75 -:0.5 " +
+          // VERSE (8 bars) - sneaking through the tomb, main exploration theme
+          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 D4:0.5 C4:1 -:0.5 " +
+          "G3:1 -:0.5 B3:0.5 -:0.5 D4:1 D4:0.5 C4:0.5 B3:1 -:0.5 " +
+          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 F4:0.5 E4:1 -:0.5 " +
+          "D4:1 C4:1 B3:1 A3:1.5 -:1 " +
 
-    // CHORUS (8 bars) - DANGER! Main hook that repeats
-    "E4:0.25 E4:0.25 -:0.125 G4:0.25 -:0.125 A4:0.5 -:0.25 A4:0.25 G4:0.25 E4:0.5 -:0.25 " +
-    "D4:0.25 D4:0.25 -:0.125 F4:0.25 -:0.125 G4:0.5 -:0.25 G4:0.25 F4:0.25 D4:0.5 -:0.25 " +
-    "C4:0.25 E4:0.25 G4:0.25 B4:0.25 -:0.125 A4:0.5 -:0.25 G4:0.25 E4:0.25 D4:0.5 -:0.25 " +
-    "C4:0.5 B3:0.5 A3:0.75 -:0.5 A3:0.5 -:0.25 " +
+          // CHORUS (8 bars) - DANGER! Main hook that repeats
+          "E4:0.5 E4:0.5 -:0.25 G4:0.5 -:0.25 A4:1 -:0.5 A4:0.5 G4:0.5 E4:1 -:0.5 " +
+          "D4:0.5 D4:0.5 -:0.25 F4:0.5 -:0.25 G4:1 -:0.5 G4:0.5 F4:0.5 D4:1 -:0.5 " +
+          "C4:0.5 E4:0.5 G4:0.5 B4:0.5 -:0.25 A4:1 -:0.5 G4:0.5 E4:0.5 D4:1 -:0.5 " +
+          "C4:1 B3:1 A3:1.5 -:1 A3:1 -:0.5 " +
 
-    // VERSE (repeat - 8 bars) - deeper into danger, slight variation
-    "A3:0.5 -:0.25 C4:0.25 -:0.25 E4:0.5 E4:0.25 D4:0.25 C4:0.5 -:0.25 " +
-    "G3:0.5 -:0.25 B3:0.25 -:0.25 D4:0.5 D4:0.25 C4:0.25 B3:0.5 -:0.25 " +
-    "A3:0.5 -:0.25 C4:0.25 -:0.25 E4:0.5 E4:0.25 F4:0.25 G4:0.5 -:0.25 " +
-    "F4:0.5 E4:0.5 D4:0.5 C4:0.75 -:0.5 " +
+          // VERSE (repeat - 8 bars) - deeper into danger, slight variation
+          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 D4:0.5 C4:1 -:0.5 " +
+          "G3:1 -:0.5 B3:0.5 -:0.5 D4:1 D4:0.5 C4:0.5 B3:1 -:0.5 " +
+          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 F4:0.5 G4:1 -:0.5 " +
+          "F4:1 E4:1 D4:1 C4:1.5 -:1 " +
 
-    // CHORUS (repeat - 8 bars) - main hook returns
-    "E4:0.25 E4:0.25 -:0.125 G4:0.25 -:0.125 A4:0.5 -:0.25 A4:0.25 G4:0.25 E4:0.5 -:0.25 " +
-    "D4:0.25 D4:0.25 -:0.125 F4:0.25 -:0.125 G4:0.5 -:0.25 G4:0.25 F4:0.25 D4:0.5 -:0.25 " +
-    "C4:0.25 E4:0.25 G4:0.25 B4:0.25 -:0.125 A4:0.5 -:0.25 G4:0.25 E4:0.25 D4:0.5 -:0.25 " +
-    "C4:0.5 B3:0.5 A3:0.75 -:0.5 A3:0.5 -:0.25 " +
+          // CHORUS (repeat - 8 bars) - main hook returns
+          "E4:0.5 E4:0.5 -:0.25 G4:0.5 -:0.25 A4:1 -:0.5 A4:0.5 G4:0.5 E4:1 -:0.5 " +
+          "D4:0.5 D4:0.5 -:0.25 F4:0.5 -:0.25 G4:1 -:0.5 G4:0.5 F4:0.5 D4:1 -:0.5 " +
+          "C4:0.5 E4:0.5 G4:0.5 B4:0.5 -:0.25 A4:1 -:0.5 G4:0.5 E4:0.5 D4:1 -:0.5 " +
+          "C4:1 B3:1 A3:1.5 -:1 A3:1 -:0.5 " +
 
-    // BRIDGE (4 bars) - discovery moment! Chromatic tension + treasure glimpse
-    "C5:0.25 C5:0.25 E5:0.25 -:0.25 G5:0.5 -:0.25 F5:0.25 E5:0.25 D5:0.5 -:0.25 " +
-    "G#4:0.125 G4:0.125 F#4:0.125 F4:0.125 E4:0.25 D#4:0.125 D4:0.125 C#4:0.125 C4:0.125 -:0.25 " +
+          // BRIDGE (4 bars) - discovery moment! Chromatic tension + treasure glimpse
+          "C5:0.5 C5:0.5 E5:0.5 -:0.5 G5:1 -:0.5 F5:0.5 E5:0.5 D5:1 -:0.5 " +
+          "G#4:0.25 G4:0.25 F#4:0.25 F4:0.25 E4:0.5 D#4:0.25 D4:0.25 C#4:0.25 C4:0.25 -:0.5 " +
 
-    // CHORUS FINALE (8 bars) - triumphant escape, ultimate payoff
-    "E4:0.25 E4:0.25 -:0.125 G4:0.25 -:0.125 A4:0.5 -:0.25 A4:0.25 G4:0.25 E4:0.5 -:0.25 " +
-    "D4:0.25 D4:0.25 -:0.125 F4:0.25 -:0.125 G4:0.5 -:0.25 G4:0.25 F4:0.25 D4:0.5 -:0.25 " +
-    "C4:0.25 E4:0.25 G4:0.25 B4:0.25 -:0.125 A4:0.5 -:0.25 G4:0.25 E4:0.25 D4:0.5 -:0.25 " +
-    "E4:0.5 -:0.25 A4:0.75 -:0.25 A4:1.0"
-  )
+          // CHORUS FINALE (8 bars) - triumphant escape, ultimate payoff
+          "E4:0.5 E4:0.5 -:0.25 G4:0.5 -:0.25 A4:1 -:0.5 A4:0.5 G4:0.5 E4:1 -:0.5 " +
+          "D4:0.5 D4:0.5 -:0.25 F4:0.5 -:0.25 G4:1 -:0.5 G4:0.5 F4:0.5 D4:1 -:0.5 " +
+          "C4:0.5 E4:0.5 G4:0.5 B4:0.5 -:0.25 A4:1 -:0.5 G4:0.5 E4:0.5 D4:1 -:0.5 " +
+          "E4:1 -:0.5 A4:1.5 -:0.5 A4:2"
+      },
+      {
+        channel: 'triangle', volume: 0.2, envelope: 'sustain',
+        notes:
+          // Intro bass (4 bars) - ominous entry
+          "A1:1 -:0.5 A1:1 -:0.5 E2:1 -:0.5 A1:1 -:0.5 " +
+          // Verse bass pattern (8 bars) - walking quarter notes
+          "A1:1 A1:1 E2:1 A1:1 G1:1 G1:1 D2:1 G1:1 " +
+          "F1:1 F1:1 C2:1 F1:1 E1:1 E1:1 B1:1 E1:1 " +
+          // Chorus bass (8 bars) - powerful dotted quarters
+          "A1:1.5 -:0.5 E2:1 A1:1 G1:1.5 -:0.5 D2:1 G1:1 " +
+          "F1:1.5 -:0.5 C2:1 F1:1 E1:1.5 G#1:1 A1:1 -:0.5 " +
+          // Verse bass (repeat - 8 bars)
+          "A1:1 A1:1 E2:1 A1:1 G1:1 G1:1 D2:1 G1:1 " +
+          "F1:1 F1:1 C2:1 F1:1 E1:1 E1:1 B1:1 E1:1 " +
+          // Chorus bass (repeat - 8 bars)
+          "A1:1.5 -:0.5 E2:1 A1:1 G1:1.5 -:0.5 D2:1 G1:1 " +
+          "F1:1.5 -:0.5 C2:1 F1:1 E1:1.5 G#1:1 A1:1 -:0.5 " +
+          // Bridge bass (4 bars) - tension/discovery
+          "F1:0.5 F1:0.5 C2:1 -:1 G1:0.5 G1:0.5 D2:1 -:1 " +
+          // Chorus finale (8 bars) - triumphant ending
+          "A1:1.5 -:0.5 E2:1 A1:1 G1:1.5 -:0.5 D2:1 G1:1 " +
+          "F1:1.5 -:0.5 C2:1 F1:1 E1:1.5 A1:1.5 A1:2"
+      }
+    ]
+  },
+  // Deeper in: slower, sparse and echoing, with a dripping noise channel. 32 beats per track
+  cavern: {
+    bpm: 96,
+    tracks: [
+      {
+        channel: 'pulse2', volume: 0.2, envelope: 'fade',
+        notes:
+          "E4:1 -:1 G4:0.5 A4:0.5 -:1 C5:1 B4:1 -:2 " +
+          "D4:1 -:1 F4:0.5 G4:0.5 -:1 A4:1 G4:1 -:2 " +
+          "E4:1 -:1 G4:0.5 A4:0.5 -:1 E5:1 D5:1 C5:1 B4:1 " +
+          "A4:2 -:1 G4:0.5 E4:0.5 A4:3 -:1"
+      },
+      {
+        channel: 'triangle', volume: 0.22, envelope: 'sustain',
+        notes: "A1:4 E2:4 D2:4 A1:4 A1:4 C2:4 E2:4 A1:4"
+      },
+      {
+        channel: 'noise', volume: 0.06, envelope: 'sharp', mode: 'periodic',
+        notes: "C6:0.25 -:5.75 G5:0.25 -:1.75 C6:0.25 -:7.75 C6:0.25 -:3.75 E6:0.25 -:3.75 C6:0.25 -:7.75"
+      }
+    ]
+  },
+  // Victory fanfare at the exit, played once
+  win: {
+    bpm: 150,
+    loop: false,
+    tracks: [
+      { channel: 'pulse1', volume: 0.35, envelope: 'soft', notes: "C5:0.5 E5:0.5 G5:0.5 C6:1.5 -:0.5 A5:0.5 B5:0.5 C6:2" },
+      { channel: 'triangle', volume: 0.25, envelope: 'sustain', notes: "C3:1.5 G2:1.5 C3:1 -:0.5 F2:0.5 G2:0.5 C3:1" }
+    ]
+  },
+  // Sad descending notes, played once
+  death: {
+    bpm: 120,
+    loop: false,
+    tracks: [
+      { channel: 'pulse1', volume: 0.4, envelope: 'soft', notes: "C4:1 -:0.5 B3:1 -:0.5 A3:1 -:0.5 G3:1.5 -:0.5 F3:2" }
+    ]
+  }
 };
+
+// Sound effects. Each event gets its own soundId so a new one restarts its slot
+const SFX = {
+  jump:        { slotId: 0, soundId: 'jump', channel: 'pulse1', frequency: 280, duration: 0.14, volume: 0.35, envelope: 'soft', sweep: { target: 640, time: 0.12 } },
+  throwTorch:  { slotId: 1, soundId: 'throw', channel: 'noise', mode: 'random', duration: 0.12, volume: 0.3, envelope: 'fade' },
+  enemyHit:    { slotId: 2, soundId: 'enemyHit', channel: 'pulse2', frequency: 500, duration: 0.08, volume: 0.35, envelope: 'sharp' },
+  enemyKill:   { slotId: 2, soundId: 'enemyKill', channel: 'pulse2', frequency: 900, duration: 0.2, volume: 0.35, envelope: 'fade', sweep: { target: 110, time: 0.2 } },
+  coin:        { slotId: 3, soundId: 'coin', channel: 'pulse2', note: 'B5', duration: 0.07, volume: 0.35, envelope: 'sharp' },
+  coinHigh:    { slotId: 3, soundId: 'coinHigh', channel: 'pulse2', note: 'E6', duration: 0.3, volume: 0.35, envelope: 'fade' },
+  brick:       { slotId: 4, soundId: 'brick', channel: 'noise', mode: 'random', duration: 0.22, volume: 0.45, envelope: 'fade' },
+  brickThud:   { slotId: 5, soundId: 'brickThud', channel: 'triangle', frequency: 150, duration: 0.1, volume: 0.6, envelope: 'sharp', sweep: { target: 60, time: 0.1 } },
+  land:        { slotId: 5, soundId: 'land', channel: 'triangle', frequency: 110, duration: 0.07, volume: 0.45, envelope: 'sharp', sweep: { target: 50, time: 0.07 } },
+  hurt:        { slotId: 6, soundId: 'hurt', channel: 'pulse1', frequency: 520, duration: 0.25, volume: 0.4, envelope: 'fade', sweep: { target: 130, time: 0.25 } },
+  death:       { slotId: 7, soundId: 'death', channel: 'noise', mode: 'random', duration: 0.5, volume: 0.6, envelope: 'fade' },
+  spikes:      { slotId: 7, soundId: 'spikes', channel: 'noise', mode: 'periodic', frequency: 700, duration: 0.4, volume: 0.55, envelope: 'fade' }
+};
+const COIN_CHIME_DELAY = 0.07; // second coin note follows the first, like a two-note chime
+const WIN_PAUSE = 3.2;         // seconds of victory jingle before the game ends
 
 let gameState;
 
@@ -385,40 +627,23 @@ function update(deltaTime, input) {
         invincible: false,
         invincibleTimer: 0,
         isDead: false,
-        deathTimer: 0,
-        deathMusicIndex: 0,
-        deathMusicTimer: 0
+        deathTimer: 0
       },
       enemies: [
         { x: 32, y: 56, vx: -ENEMY_SPEED_1, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },   // Scorpion on row 9 platform
         { x: 160, y: 96, vx: ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },   // Scorpion on ground
         { x: 216, y: 56, vx: -ENEMY_SPEED_1, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },  // Scorpion on row 9 platform
-        { x: 368, y: 56, vx: ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 }    // Scorpion on row 9 platform
+        { x: 368, y: 56, vx: ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },   // Scorpion on row 9 platform
+        { x: 232, y: 208, vx: ENEMY_SPEED_1, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },  // Cavern: metal walkway
+        { x: 120, y: 232, vx: -ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 }  // Cavern floor
       ],
       bats: [
-        { x: 120, y: 40, vx: -30, vy: 0, health: 1, pattern: 'sine', phase: 0 },  // Flying bat with sine wave pattern
-        { x: 280, y: 32, vx: 35, vy: 0, health: 1, pattern: 'sine', phase: Math.PI },  // Flying bat
-        { x: 420, y: 48, vx: -30, vy: 0, health: 1, pattern: 'sine', phase: Math.PI/2 }   // Flying bat
+        { x: 120, y: 40, vx: -30, vy: 0, health: 1, pattern: 'sine', phase: 0, minY: 16, maxY: 80 },  // Flying bat with sine wave pattern
+        { x: 280, y: 32, vx: 35, vy: 0, health: 1, pattern: 'sine', phase: Math.PI, minY: 16, maxY: 80 },  // Flying bat
+        { x: 420, y: 48, vx: -30, vy: 0, health: 1, pattern: 'sine', phase: Math.PI/2, minY: 16, maxY: 80 },  // Flying bat
+        { x: 300, y: 176, vx: 30, vy: 0, health: 1, pattern: 'sine', phase: 0, minY: 150, maxY: 200 }  // Cavern bat
       ],
-      tilemap: [
-        // 16 rows x 64 columns (512px wide world with scrolling) - 0=empty, 6=platform, 9=brick, 10=metal, 11=spikes, 12=exit
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,12], // Row 0: Exit at far right
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,6,6,6,6],   // Row 1: Platform to exit
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 2
-        [0,0,0,0,0,0,0,0,0,9,9,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,9,9,0,0,0,0,0,0,0,0,0,0,0,0,9,9,9,0,0,0,0,0,0,0,0,0,0,0,9,9,9,0,0,0,0,0],   // Row 3: Brick platforms
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 4
-        [0,0,0,0,9,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,9,0,0,0,0,0,0,0,0,0,0,0,0,9,9,0,0,0,0,0,0,0,0,0,0,0,0,0,9,9,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 5: Brick platforms
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 6
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 7
-        [0,0,0,0,0,0,0,0,0,0,0,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,6,6,0,0,0,0,0,0,0],   // Row 8: Stone platforms
-        [0,0,0,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 9: Stone platforms
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 10
-        [0,0,0,0,0,0,0,0,11,11,11,0,0,0,0,0,0,0,0,11,11,11,11,0,0,0,0,0,0,0,0,0,11,11,11,0,0,0,0,0,0,11,11,11,0,0,0,0,0,0,0,0,11,11,11,0,0,0,0,0,0,0,0,0], // Row 11: Spikes
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 12
-        [0,6,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],   // Row 13: Starting platform
-        [6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6],   // Row 14: Ground
-        [6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6]    // Row 15: Ground
-      ],
+      tilemap: LEVEL_ROWS.map(parseLevelRow), // copy for collisions; the console draws resources().tilemap
       coins: [
         { x: 48, y: 56, collected: false },
         { x: 32, y: 32, collected: false },
@@ -430,31 +655,79 @@ function update(deltaTime, input) {
         { x: 336, y: 32, collected: false },
         { x: 400, y: 64, collected: false },
         { x: 456, y: 16, collected: false },
-        { x: 488, y: 0, collected: false }
+        { x: 488, y: 0, collected: false },
+        // Cavern
+        { x: 448, y: 152, collected: false },
+        { x: 336, y: 176, collected: false },
+        { x: 64, y: 184, collected: false },
+        { x: 80, y: 184, collected: false },
+        { x: 200, y: 200, collected: false },
+        { x: 360, y: 216, collected: false }
       ],
       projectiles: [],
       gravity: GRAVITY,
       jumpPower: JUMP_POWER,
       playerSpeed: PLAYER_SPEED,
       score: 0,
+      started: false,
       gameOver: false,
       levelComplete: false,
       camera: {
         x: 0,  // Current camera position
+        y: 0,
         targetX: 0  // Target camera position (where we want to be)
       },
-      music: {
-        bass: {index: 0, timer: 0},
-        melody: {index: 0, timer: 0}
-      }
+      bgEdits: [], // tilemap changes to send to the console this frame
+      soundQueue: [], // {delay, sound}: effects to send a little later
+      torchTimer: 0,
+      torchFrame: 0,
+      inCavern: false,
+      winTimer: 0
     };
     // Initialize camera to player's starting position
     gameState.camera.x = Math.max(0, Math.min(gameState.player.x - 64, WORLD_WIDTH - SCREEN_WIDTH));
     gameState.camera.targetX = gameState.camera.x;
   }
 
-  const dt = deltaTime; // Use deltaTime directly
+  // Seconds since last frame, capped so a hitch can't move anything through an 8px platform
+  const dt = Math.min(deltaTime, 1 / 30);
   const sounds = [];
+
+  // Send queued effects whose delay has passed
+  gameState.soundQueue = gameState.soundQueue.filter(queued => {
+    queued.delay -= dt;
+    if (queued.delay > 0) return true;
+    sounds.push(queued.sound);
+    return false;
+  });
+
+  // Flicker the wall torches by swapping their tiles in the console's tilemap
+  gameState.torchTimer += dt;
+  if (gameState.torchTimer >= TORCH_FLICKER_TIME) {
+    gameState.torchTimer = 0;
+    gameState.torchFrame = 1 - gameState.torchFrame;
+    const tileId = gameState.torchFrame ? TILE_WALL_TORCH_2 : TILE_WALL_TORCH_1;
+    for (const torch of WALL_TORCHES) gameState.bgEdits.push({ x: torch.x, y: torch.y, tileId });
+  }
+
+  // Title screen: wait for the player before starting the level
+  if (!gameState.started) {
+    if (input.aPressed) {
+      gameState.started = true;
+    }
+    // Text layer over the level, with a black backing so it stays readable
+    return {
+      text: [
+        { x: 1, y: 5, text: "TOMB EXPLORER" },
+        { x: 4, y: 9, text: "PRESS A" }
+      ],
+      textBg: 0,
+      bg: gameState.bgEdits.splice(0), // torches flicker behind the title too
+      sprites: [{ spriteId: SPRITE_TREASURE, x: 60, y: 56 }],
+      score: 0,
+      gameOver: false
+    };
+  }
 
   // Handle death animation
   if (gameState.player.isDead) {
@@ -463,36 +736,15 @@ function update(deltaTime, input) {
       gameState.gameOver = true;
     }
 
-    // Play death melody
-    gameState.player.deathMusicTimer += dt;
-    if (gameState.player.deathMusicIndex < DEATH_MELODY.length) {
-      const currentNote = DEATH_MELODY[gameState.player.deathMusicIndex];
-      if (gameState.player.deathMusicTimer >= currentNote.duration) {
-        gameState.player.deathMusicIndex++;
-        gameState.player.deathMusicTimer = 0;
-      }
-      // Play current note (only if not a rest)
-      if (currentNote.note !== null) {
-        sounds.push({
-          slotId: 4,
-          soundId: `death_${gameState.player.deathMusicIndex}`,
-          channel: 'pulse1',
-          note: currentNote.note,
-          duration: currentNote.duration,
-          volume: 0.4,
-          envelope: 'soft'
-        });
-      }
-    }
-
     // During death animation, apply gravity but check for ground collision
     if (!gameState.gameOver) {
-      // Apply gravity
-      gameState.player.vy += GRAVITY * dt;
+      // Apply gravity, capped like normal falling so the body can't skip over a platform
+      gameState.player.vy = Math.min(gameState.player.vy + GRAVITY_FALL * dt, MAX_FALL_SPEED);
       const newY = gameState.player.y + gameState.player.vy * dt;
 
-      // Simple ground collision for death animation
-      const bottomEdge = newY + PLAYER_HEIGHT;
+      // Simple ground/ceiling collision for death animation
+      const rising = gameState.player.vy < 0;
+      const bottomEdge = rising ? newY : newY + PLAYER_HEIGHT;
       const playerLeft = gameState.player.x;
       const playerRight = gameState.player.x + PLAYER_WIDTH - 1;
       let hitGround = false;
@@ -503,8 +755,8 @@ function update(deltaTime, input) {
         if (tileX >= 0 && tileX < TILES_X && tileY >= 0 && tileY < TILES_Y) {
           const tileId = gameState.tilemap[tileY][tileX];
           if (tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL) {
-            // Hit ground - stop falling
-            gameState.player.y = tileY * TILE_SIZE - PLAYER_HEIGHT;
+            // Hit ground - stop falling (or bump the ceiling if still rising)
+            gameState.player.y = rising ? (tileY + 1) * TILE_SIZE : tileY * TILE_SIZE - PLAYER_HEIGHT;
             gameState.player.vy = 0;
             hitGround = true;
             break;
@@ -530,23 +782,8 @@ function update(deltaTime, input) {
 
   // Check for game over or level complete
   if (gameState.gameOver || gameState.levelComplete) {
-    // Stop game logic, just render current state
-    const tiles = [];
+    // Stop game logic, just render current state (the console keeps drawing the tilemap)
     const sprites = [];
-
-    // Render tilemap
-    for (let y = 0; y < TILES_Y; y++) {
-      for (let x = 0; x < TILES_X; x++) {
-        const tileId = gameState.tilemap[y][x];
-        if (tileId !== TILE_EMPTY) {
-          tiles.push({
-            x: x,
-            y: y,
-            tileId: tileId
-          });
-        }
-      }
-    }
 
     // Render player and enemies even when game over (frozen state)
     const facingLeft = gameState.player.facing < 0;
@@ -634,42 +871,57 @@ function update(deltaTime, input) {
       }
     }
 
+    // After reaching the exit, hold the scene while the fanfare plays, then end the game
+    const text = [];
+    if (gameState.levelComplete) {
+      gameState.winTimer -= dt;
+      if (gameState.winTimer <= 0) gameState.gameOver = true;
+      text.push({ x: 2, y: 6, text: "LEVEL CLEAR!" });
+      const scoreLine = "SCORE " + gameState.score;
+      text.push({ x: Math.floor((16 - scoreLine.length) / 2), y: 8, text: scoreLine });
+    }
+    const bg = gameState.bgEdits;
+    gameState.bgEdits = [];
+
     return {
-      tiles,
       sprites,
+      bg,
+      text,
+      textBg: text.length ? 0 : undefined,
+      scroll: { x: Math.round(gameState.camera.x), y: Math.round(gameState.camera.y) },
+      music: gameState.levelComplete ? 'win' : 'death',
+      sounds,
       score: gameState.score,
-      gameOver: gameState.gameOver,
-      levelComplete: gameState.levelComplete
+      gameOver: gameState.gameOver
     };
   }
 
   // Player input handling with deltaTime (disabled during death)
   if (!gameState.player.isDead) {
-    if (input.left) {
-      gameState.player.vx = -gameState.playerSpeed;
-      gameState.player.facing = -1;
-    } else if (input.right) {
-      gameState.player.vx = gameState.playerSpeed;
-      gameState.player.facing = 1;
+    const player = gameState.player;
+    const dir = input.left ? -1 : input.right ? 1 : 0;
+    const control = player.onGround ? 1 : AIR_CONTROL;
+
+    // Accelerate toward top speed, brake harder when turning around, coast to a stop
+    if (dir !== 0) {
+      player.facing = dir;
+      const accel = player.vx * dir < 0 ? PLAYER_TURN_DECEL : PLAYER_ACCEL;
+      player.vx += dir * accel * control * dt;
+      if (Math.abs(player.vx) > gameState.playerSpeed) player.vx = dir * gameState.playerSpeed;
     } else {
-      gameState.player.vx = 0;
+      const slow = PLAYER_DECEL * control * dt;
+      player.vx = Math.abs(player.vx) <= slow ? 0 : player.vx - Math.sign(player.vx) * slow;
     }
 
-    // Jump (using up arrow or B button)
-    if ((input.up || input.b) && gameState.player.onGround) {
-      gameState.player.vy = -gameState.jumpPower;
-      gameState.player.onGround = false;
-      // Jump sound
-      sounds.push({
-        slotId: 0,
-        soundId: 'jump',
-        channel: 'pulse1',
-        frequency: 800,
-        duration: 0.12,
-        volume: 0.5,
-        envelope: 'soft',
-        sweep: {target: 200, time: 0.12}
-      });
+    // Jump (up arrow or B button), with coyote time and a short input buffer
+    player.coyoteTimer = player.onGround ? COYOTE_TIME : Math.max(0, (player.coyoteTimer || 0) - dt);
+    player.jumpBuffer = (input.upPressed || input.bPressed) ? JUMP_BUFFER_TIME : Math.max(0, (player.jumpBuffer || 0) - dt);
+    if (player.jumpBuffer > 0 && player.coyoteTimer > 0) {
+      player.vy = -gameState.jumpPower;
+      player.onGround = false;
+      player.coyoteTimer = 0;
+      player.jumpBuffer = 0;
+      sounds.push(SFX.jump); // rising sweep
     }
 
     // Attack (using A button)
@@ -680,38 +932,25 @@ function update(deltaTime, input) {
         vx: gameState.player.facing * PROJECTILE_SPEED,
         life: PROJECTILE_LIFETIME
       });
-      // Shoot sound
-      sounds.push({
-        slotId: 1,
-        soundId: 'shoot',
-        channel: 'pulse2',
-        frequency: 1200,
-        duration: 0.08,
-        volume: 0.6,
-        envelope: 'sharp'
-      });
+      sounds.push(SFX.throwTorch);
     }
   } else {
     // During death, stop horizontal movement
     gameState.player.vx = 0;
   }
 
-  // Apply gravity to player (skip if dead - already handled in death animation)
-  if (!gameState.player.isDead) {
-    if (!gameState.player.onGround) {
-      gameState.player.vy += gameState.gravity * dt;
-    }
-
-    // Update player position with deltaTime
-    gameState.player.x += gameState.player.vx * dt;
-    gameState.player.y += gameState.player.vy * dt;
+  // Apply gravity to player (skip if dead - already handled in death animation).
+  // Position is moved once, by the collision code below.
+  if (!gameState.player.isDead && !gameState.player.onGround) {
+    const player = gameState.player;
+    const jumpHeld = input.up || input.b;
+    const gravity = player.vy >= 0 ? GRAVITY_FALL : jumpHeld ? gameState.gravity : GRAVITY_RELEASED;
+    player.vy = Math.min(player.vy + gravity * dt, MAX_FALL_SPEED);
   }
 
-  // No camera in single screen mode
-
-  // Player walking animation
+  // Player walking animation, faster the faster the player runs
   if (Math.abs(gameState.player.vx) > 0) {
-    gameState.player.walkTimer += dt;
+    gameState.player.walkTimer += dt * Math.abs(gameState.player.vx) / gameState.playerSpeed;
     if (gameState.player.walkTimer > PLAYER_WALK_INTERVAL) {
       gameState.player.walkFrame = 1 - gameState.player.walkFrame;
       gameState.player.walkTimer = 0;
@@ -755,6 +994,7 @@ function update(deltaTime, input) {
           // Snap to the right edge of the tile
           const tileX = Math.floor(leftEdge / TILE_SIZE);
           gameState.player.x = (tileX + 1) * TILE_SIZE;
+          gameState.player.vx = 0;
           break;
         }
       }
@@ -768,6 +1008,7 @@ function update(deltaTime, input) {
           // Snap to the left edge of the tile
           const tileX = Math.floor(rightEdge / TILE_SIZE);
           gameState.player.x = tileX * TILE_SIZE - PLAYER_WIDTH;
+          gameState.player.vx = 0;
           break;
         }
       }
@@ -810,27 +1051,20 @@ function update(deltaTime, input) {
         gameState.player.health = 0;
         gameState.player.isDead = true;
         gameState.player.deathTimer = 3.0;
-        // Death sound
-        sounds.push({
-          slotId: 7,
-          channel: 'noise',
-          mode: 'random',
-          duration: 0.5,
-          volume: 0.7,
-          envelope: 'fade'
-        });
+        sounds.push(SFX.spikes);
       }
 
       // Check for exit
-      if (tileId === TILE_EXIT) {
+      if (tileId === TILE_EXIT && !gameState.levelComplete) {
         gameState.levelComplete = true;
-        return;
+        gameState.winTimer = WIN_PAUSE;
       }
 
       // Check for solid platforms
       if (isSolidTile(tileId)) {
         const tileY = Math.floor(bottomEdge / TILE_SIZE);
         gameState.player.y = tileY * TILE_SIZE - PLAYER_HEIGHT;
+        if (gameState.player.vy >= MAX_FALL_SPEED) sounds.push(SFX.land); // thump after a long drop
         gameState.player.vy = 0;
         gameState.player.onGround = true;
         hitPlatform = true;
@@ -876,29 +1110,12 @@ function update(deltaTime, input) {
         gameState.player.invincible = true;
         gameState.player.invincibleTimer = 1.5; // 1.5 seconds of invincibility
 
-        // Damage sound
-        sounds.push({
-          slotId: 6,
-          channel: 'noise',
-          mode: 'periodic',
-          frequency: 100,
-          duration: 0.2,
-          volume: 0.6,
-          envelope: 'fade'
-        });
+        sounds.push(SFX.hurt);
 
         if (gameState.player.health <= 0) {
           gameState.player.isDead = true;
           gameState.player.deathTimer = 3.0; // 3 second death animation before game over
-          // Death sound
-          sounds.push({
-            slotId: 7,
-            channel: 'noise',
-            mode: 'random',
-            duration: 0.5,
-            volume: 0.7,
-            envelope: 'fade'
-          });
+          sounds.push(SFX.death);
         }
       }
     }
@@ -914,29 +1131,12 @@ function update(deltaTime, input) {
         gameState.player.invincible = true;
         gameState.player.invincibleTimer = 1.5;
 
-        // Damage sound
-        sounds.push({
-          slotId: 6,
-          channel: 'noise',
-          mode: 'periodic',
-          frequency: 100,
-          duration: 0.2,
-          volume: 0.6,
-          envelope: 'fade'
-        });
+        sounds.push(SFX.hurt);
 
         if (gameState.player.health <= 0) {
           gameState.player.isDead = true;
           gameState.player.deathTimer = 3.0; // 3 second death animation before game over
-          // Death sound
-          sounds.push({
-            slotId: 7,
-            channel: 'noise',
-            mode: 'random',
-            duration: 0.5,
-            volume: 0.7,
-            envelope: 'fade'
-          });
+          sounds.push(SFX.death);
         }
       }
     }
@@ -945,7 +1145,7 @@ function update(deltaTime, input) {
   // Keep player in world bounds
   if (gameState.player.x < 0) gameState.player.x = 0;
   if (gameState.player.x > WORLD_WIDTH - PLAYER_WIDTH) gameState.player.x = WORLD_WIDTH - PLAYER_WIDTH;
-  if (gameState.player.y > SCREEN_HEIGHT) {
+  if (gameState.player.y > WORLD_HEIGHT) {
     gameState.player.y = PLAYER_START_Y;
     gameState.player.x = PLAYER_START_X;
     gameState.player.vy = 0;
@@ -963,23 +1163,15 @@ function update(deltaTime, input) {
     for (let x = playerLeft; x <= playerRight; x += 4) {
       for (let y = playerTop; y <= playerBottom; y += 4) {
         const tileId = getTileAt(x, y);
-        if (tileId === TILE_SPIKES) {
+        if (tileId === TILE_SPIKES && !gameState.player.isDead) {
           gameState.player.health = 0;
           gameState.player.isDead = true;
           gameState.player.deathTimer = 3.0;
-          // Death sound
-          sounds.push({
-            slotId: 7,
-            channel: 'noise',
-            mode: 'random',
-            duration: 0.5,
-            volume: 0.7,
-            envelope: 'fade'
-          });
+          sounds.push(SFX.spikes);
         }
-        if (tileId === TILE_EXIT) {
+        if (tileId === TILE_EXIT && !gameState.levelComplete) {
           gameState.levelComplete = true;
-          return;
+          gameState.winTimer = WIN_PAUSE;
         }
       }
     }
@@ -1085,8 +1277,8 @@ function update(deltaTime, input) {
     }
 
     // Keep bats in vertical bounds
-    if (bat.y < 16) bat.y = 16;
-    if (bat.y > 80) bat.y = 80;
+    if (bat.y < bat.minY) bat.y = bat.minY;
+    if (bat.y > bat.maxY) bat.y = bat.maxY;
   }
 
   // Update projectiles with deltaTime
@@ -1097,6 +1289,19 @@ function update(deltaTime, input) {
     // Remove if out of bounds or expired
     if (proj.x < 0 || proj.x > WORLD_WIDTH || proj.life <= 0) return false;
 
+    // Torches break bricks: change our copy and tell the console to redraw that tile
+    const hitX = Math.floor((proj.x + PROJECTILE_SIZE / 2) / TILE_SIZE);
+    const hitY = Math.floor((proj.y + PROJECTILE_SIZE / 2) / TILE_SIZE);
+    const hitTile = getTileAt(proj.x + PROJECTILE_SIZE / 2, proj.y + PROJECTILE_SIZE / 2);
+    if (hitTile === TILE_BRICK) {
+      gameState.tilemap[hitY][hitX] = TILE_EMPTY;
+      gameState.bgEdits.push({ x: hitX, y: hitY, tileId: backdropTile(hitX, hitY) });
+      gameState.score += BRICK_SCORE;
+      sounds.push(SFX.brick, SFX.brickThud); // crumble plus a low thump
+      return false;
+    }
+    if (hitTile === TILE_METAL || hitTile === TILE_PLATFORM) return false;
+
     // Check collision with scorpions
     for (const enemy of gameState.enemies) {
       if (enemy.health > 0 &&
@@ -1105,26 +1310,9 @@ function update(deltaTime, input) {
         enemy.health--;
         if (enemy.health <= 0) {
           gameState.score += ENEMY_KILL_SCORE;
-          // Enemy death sound
-          sounds.push({
-            slotId: 2,
-            channel: 'noise',
-            mode: 'random',
-            duration: 0.3,
-            volume: 0.5,
-            envelope: 'fade'
-          });
+          sounds.push(SFX.enemyKill);
         } else {
-          // Enemy hit sound
-          sounds.push({
-            slotId: 2,
-            channel: 'noise',
-            mode: 'periodic',
-            frequency: 150,
-            duration: 0.1,
-            volume: 0.4,
-            envelope: 'sharp'
-          });
+          sounds.push(SFX.enemyHit);
         }
         return false;
       }
@@ -1138,15 +1326,7 @@ function update(deltaTime, input) {
         bat.health--;
         if (bat.health <= 0) {
           gameState.score += ENEMY_KILL_SCORE;
-          // Bat death sound
-          sounds.push({
-            slotId: 2,
-            channel: 'noise',
-            mode: 'random',
-            duration: 0.3,
-            volume: 0.5,
-            envelope: 'fade'
-          });
+          sounds.push(SFX.enemyKill);
         }
         return false;
       }
@@ -1162,80 +1342,14 @@ function update(deltaTime, input) {
         gameState.player.y + PLAYER_HEIGHT > coin.y && gameState.player.y < coin.y + COIN_SIZE) {
       coin.collected = true;
       gameState.score += COIN_SCORE;
-      // Coin sound
-      sounds.push({
-        slotId: 3,
-        channel: 'pulse1',
-        note: 'E5',
-        duration: 0.08,
-        volume: 0.6,
-        envelope: 'sustain'
-      });
+      // Two-note chime: the second note is sent a moment later from the sound queue
+      sounds.push(SFX.coin);
+      gameState.soundQueue.push({ delay: COIN_CHIME_DELAY, sound: SFX.coinHigh });
     }
   }
 
-  // Update background music (skip when dead - death melody plays instead)
-  if (!gameState.player.isDead) {
-    // Bass track
-    gameState.music.bass.timer += dt;
-    const bassNote = MUSIC.bass[gameState.music.bass.index];
-    if (gameState.music.bass.timer >= bassNote.duration) {
-      gameState.music.bass.index = (gameState.music.bass.index + 1) % MUSIC.bass.length;
-      gameState.music.bass.timer = 0;
-    }
-
-    // Melody track
-    gameState.music.melody.timer += dt;
-    const melodyNote = MUSIC.melody[gameState.music.melody.index];
-    if (gameState.music.melody.timer >= melodyNote.duration) {
-      gameState.music.melody.index = (gameState.music.melody.index + 1) % MUSIC.melody.length;
-      gameState.music.melody.timer = 0;
-    }
-
-    // Add music to sounds (slots 4-5 reserved for music)
-    // Only play notes that aren't rests (null)
-    if (bassNote.note !== null) {
-      sounds.push({
-        slotId: 4,
-        soundId: `bass_${gameState.music.bass.index}`,
-        channel: 'triangle',
-        note: bassNote.note,
-        duration: bassNote.duration,
-        volume: 0.2,
-        envelope: 'sustain'
-      });
-    }
-
-    if (melodyNote.note !== null) {
-      sounds.push({
-        slotId: 5,
-        soundId: `melody_${gameState.music.melody.index}`,
-        channel: 'pulse1',
-        note: melodyNote.note,
-        duration: melodyNote.duration,
-        volume: 0.25,
-        envelope: 'soft'
-      });
-    }
-  }
-
-  // Build render commands (new grouped format)
-  const tiles = [];
+  // Build render commands (the console draws the tilemap itself)
   const sprites = [];
-
-  // Render tilemap
-  for (let y = 0; y < TILES_Y; y++) {
-    for (let x = 0; x < TILES_X; x++) {
-      const tileId = gameState.tilemap[y][x];
-      if (tileId !== TILE_EMPTY) {
-        tiles.push({
-          x: x,
-          y: y,
-          tileId: tileId
-        });
-      }
-    }
-  }
 
   // Render treasure
   for (const coin of gameState.coins) {
@@ -1371,38 +1485,59 @@ function update(deltaTime, input) {
     gameState.camera.x = gameState.player.x + PLAYER_WIDTH - (SCREEN_WIDTH - CAMERA_DEAD_ZONE_RIGHT);
   }
 
+  // Vertically the camera follows the ground, not every jump, and looks ahead when dropping
+  const player = gameState.player;
+  if (player.onGround || player.groundY === undefined) player.groundY = player.y;
+  let targetY;
+  if (!player.onGround && player.vy > 0 && player.y > player.groundY + 4) {
+    // Dropping below the last ledge: lead downward so the landing spot is visible
+    targetY = player.y - CAMERA_FALL_LOOKAHEAD;
+    // ...unless the upper floor is right below, which is already on screen
+    const column = Math.floor((player.x + PLAYER_WIDTH / 2) / TILE_SIZE);
+    const floorBelow = gameState.tilemap[UPPER_FLOOR_Y / TILE_SIZE][column] !== TILE_EMPTY;
+    if (player.y + PLAYER_HEIGHT <= UPPER_FLOOR_Y && floorBelow) targetY = Math.min(targetY, 0);
+  } else if (player.onGround && input.down && !player.isDead) {
+    targetY = player.y - CAMERA_LOOK_DOWN;
+  } else {
+    // Keep the ground near the bottom with room above for jumps
+    targetY = player.groundY + PLAYER_HEIGHT + CAMERA_GROUND_MARGIN - SCREEN_HEIGHT;
+    if (player.groundY + PLAYER_HEIGHT <= UPPER_FLOOR_Y) targetY = Math.min(targetY, 0);
+  }
+  gameState.camera.y += (targetY - gameState.camera.y) * Math.min(1, dt * CAMERA_SMOOTHING);
+  // Never let the player leave the screen while the camera catches up
+  gameState.camera.y = Math.max(gameState.camera.y, player.y + PLAYER_HEIGHT + CAMERA_EDGE - SCREEN_HEIGHT);
+  gameState.camera.y = Math.min(gameState.camera.y, player.y - CAMERA_EDGE);
+
   // Clamp camera to world bounds
   gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH - SCREEN_WIDTH));
+  gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT - SCREEN_HEIGHT));
 
   // Round camera position to avoid subpixel jitter
   const cameraScrollX = Math.round(gameState.camera.x);
+  const cameraScrollY = Math.round(gameState.camera.y);
 
-  // Render health hearts as sprites (add scroll offset to convert screen coords to world coords)
+  // Switch to the cavern theme once the player drops below the upper floor (sending a new name restarts music)
+  if (gameState.player.y > UPPER_FLOOR_Y + TILE_SIZE * 2) gameState.inCavern = true;
+
+  // HUD on the text layer: screen grid, doesn't scroll with the camera
+  const text = [];
   for (let i = 0; i < gameState.player.health; i++) {
-    sprites.push({
-      spriteId: SPRITE_HEART,
-      x: cameraScrollX + 2 + (i * 10),
-      y: 2
-    });
+    text.push({ x: i, y: 0, tileId: SPRITE_HEART });
   }
+  const scoreText = String(gameState.score);
+  text.push({ x: 16 - scoreText.length, y: 0, text: scoreText });
 
-  // Render score as sprites using font tile IDs (add scroll offset for HUD positioning)
-  const scoreText = gameState.score.toString();
-  const scoreStartX = cameraScrollX + SCREEN_WIDTH - 8 * scoreText.length - 2;
-  for (let i = 0; i < scoreText.length; i++) {
-    sprites.push({
-      spriteId: 0x100 + scoreText.charCodeAt(i), // Font tile ID as sprite
-      x: scoreStartX + (i * 8),
-      y: 2
-    });
-  }
+  const bg = gameState.bgEdits;
+  gameState.bgEdits = [];
 
   return {
-    tiles,
     sprites,
-    scroll: { x: cameraScrollX, y: 0 },
-    score: gameState.gameOver ? 0 : gameState.score,
-    gameOver: gameState.gameOver || gameState.levelComplete,
+    bg,
+    text,
+    scroll: { x: cameraScrollX, y: cameraScrollY },
+    music: gameState.player.isDead ? 'death' : gameState.inCavern ? 'cavern' : 'main',
+    score: gameState.score,
+    gameOver: gameState.gameOver, // after the exit, the victory pause ends the game
     sounds: sounds
   };
 }

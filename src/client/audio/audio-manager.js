@@ -29,14 +29,16 @@ const C2_FREQ = 65.41;
  * Convert note name to frequency (e.g., 'C4' -> 261.63 Hz)
  */
 function noteToFrequency(note) {
-  const match = note.match(/^([A-G]#?)(\d)$/);
+  const match = note.match(/^([A-G])([#b]?)(\d)$/);
   if (!match) return 440; // Default to A4
 
-  const [, noteName, octaveStr] = match;
-  const octave = parseInt(octaveStr, 10);
-  const semitone = NOTE_NAMES.indexOf(noteName);
+  const [, letter, accidental, octaveStr] = match;
+  let octave = parseInt(octaveStr, 10);
+  let semitone = NOTE_NAMES.indexOf(letter) + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0);
 
-  if (semitone === -1) return 440;
+  // Cb wraps down to B of the previous octave, B# up to C of the next
+  if (semitone < 0) { semitone += 12; octave -= 1; }
+  if (semitone > 11) { semitone -= 12; octave += 1; }
 
   const ratio = SEMITONE_RATIOS[semitone];
   const octaveMultiplier = Math.pow(2, octave - 2);
@@ -221,6 +223,7 @@ export class AudioManager {
     this.ctx = null;
     this.masterGain = null;
     this.slots = [];
+    this.musicNodes = new Set(); // notes started by the music sequencer, outside the 8 slots
     this.muted = false;
     this.initialized = false;
   }
@@ -307,7 +310,14 @@ export class AudioManager {
   }
 
   _updateSlot(slot, command) {
-    if (!command || command.soundId === null) {
+    // A slot not sent this frame keeps playing a one-shot to the end of its
+    // duration; only looping sounds stop as soon as the game stops sending them
+    if (!command) {
+      if (slot.isLooping) this._stopSlot(slot);
+      return;
+    }
+
+    if (command.soundId === null) {
       this._stopSlot(slot);
       return;
     }
@@ -388,7 +398,50 @@ export class AudioManager {
     }
   }
 
+  /**
+   * Play one note from the music sequencer; music doesn't use the 8 sound effect slots
+   */
+  playMusicNote(note) {
+    if (!this.initialized || !this.ctx) return;
+
+    let nodes;
+    try {
+      switch (note.channel) {
+        case 'pulse1':
+        case 'pulse2':
+          nodes = playPulseSound(this.ctx, note, this.masterGain);
+          break;
+        case 'triangle':
+          nodes = playTriangleSound(this.ctx, note, this.masterGain);
+          break;
+        case 'noise':
+          nodes = playNoiseSound(this.ctx, note, this.masterGain);
+          break;
+        default:
+          return;
+      }
+    } catch (error) {
+      console.error('Error playing music note:', error);
+      return;
+    }
+
+    this.musicNodes.add(nodes);
+    (nodes.osc || nodes.source).onended = () => this.musicNodes.delete(nodes);
+  }
+
+  stopMusic() {
+    for (const nodes of this.musicNodes) {
+      try {
+        (nodes.osc || nodes.source).stop();
+      } catch (e) {
+        // Already stopped
+      }
+    }
+    this.musicNodes.clear();
+  }
+
   cleanup() {
+    this.stopMusic();
     for (const slot of this.slots) {
       this._stopSlot(slot);
     }

@@ -1,10 +1,7 @@
 import { newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
 import releaseVariant from "@jitl/quickjs-singlefile-cjs-release-sync";
-import {
-  QuickJSGameExecutor,
-  getSpritePosition,
-  getDefaultPalette
-} from "../shared/game-runner-common.js";
+import { QuickJSGameExecutor } from "../shared/game-runner-common.js";
+import { ConsoleState, checkConsoleResources, checkCommands } from "../shared/console-state.js";
 
 const SMOKE_LOAD_BUDGET_MS = 2000;
 const SMOKE_RUN_BUDGET_MS = 5000;
@@ -44,7 +41,7 @@ function checkResources(resources) {
     if (!Array.isArray(resources.palette)) return 'palette must be an array';
     if (resources.palette.length > 16) return `palette has ${resources.palette.length} colors, max is 16`;
   }
-  return null;
+  return checkConsoleResources(resources);
 }
 
 /**
@@ -75,7 +72,7 @@ export class HeadlessGameRunner {
    * Run game code and capture render state after N frames
    * @param {string} gameCode - The game JavaScript code
    * @param {number} frames - Number of frames to simulate (default 60)
-   * @returns {Object} - { sprites, palette, tiles, background, spriteSlots, scroll }
+   * @returns {Object} - { metadata, resources, state } where state is the ConsoleState after the last frame
    */
   async runGame(gameCode, frames = 60) {
     await this.initialize();
@@ -93,29 +90,18 @@ export class HeadlessGameRunner {
 
       // Run update() for specified frames to let game initialize
       const deltaTime = 1 / 60; // seconds, same unit as the client game loop
-      let lastState = null;
 
       const input = QuickJSGameExecutor.createInputState({}, {});
+      const state = new ConsoleState(resources);
 
       for (let i = 0; i < frames; i++) {
-        const state = this.executor.callUpdate(updateHandle, deltaTime, input);
-        if (state) {
-          lastState = state;
-        }
+        state.apply(this.executor.callUpdate(updateHandle, deltaTime, input));
       }
 
       // Cleanup
       updateHandle.dispose();
 
-      return {
-        metadata: metadata || {},
-        sprites: resources.sprites || [],
-        palette: resources.palette || getDefaultPalette(),
-        tiles: lastState?.tiles || [],
-        background: lastState?.background ?? 0,
-        spriteSlots: lastState?.sprites || [],
-        scroll: lastState?.scroll || { x: 0, y: 0 }
-      };
+      return { metadata: metadata || {}, resources, state };
     } catch (error) {
       console.error("HeadlessGameRunner error:", error);
       throw error;
@@ -153,6 +139,7 @@ export class HeadlessGameRunner {
       }
 
       const deltaTime = 1 / 60; // seconds, same unit as the client game loop
+      const consoleState = new ConsoleState(loaded.resources);
       let prevButtons = {};
       deadline = Date.now() + SMOKE_RUN_BUDGET_MS;
 
@@ -165,12 +152,11 @@ export class HeadlessGameRunner {
         if (!state || typeof state !== 'object' || Array.isArray(state)) {
           return { ok: false, frame, error: `update() must return an object, got ${JSON.stringify(state)}` };
         }
-        if (state.sprites !== undefined && !Array.isArray(state.sprites)) {
-          return { ok: false, frame, error: 'update() returned sprites that is not an array' };
+        const commandError = checkCommands(state);
+        if (commandError) {
+          return { ok: false, frame, error: commandError };
         }
-        if (state.tiles !== undefined && !Array.isArray(state.tiles)) {
-          return { ok: false, frame, error: 'update() returned tiles that is not an array' };
-        }
+        consoleState.apply(state);
         if (state.gameOver === true && frame < SMOKE_IDLE_FRAMES) {
           return { ok: false, frame, error: `game reported gameOver after ${frame + 1} frames with no input; the game must wait for the player` };
         }
