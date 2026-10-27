@@ -6,7 +6,8 @@
 import assert from 'assert/strict';
 import { ConsoleState, checkTilemap, checkConsoleResources, checkCommands } from '../src/shared/console-state.js';
 import { ConsoleRenderer } from '../src/shared/console-renderer.js';
-import { MusicPlayer, parseSong, checkVoice } from '../src/shared/music.js';
+import { readFileSync } from 'fs';
+import { MusicPlayer, parseSong, checkVoice, DRUMS } from '../src/shared/music.js';
 
 const SOLID = (digit) => Array(8).fill(digit.repeat(8));
 const sprites = [SOLID('0'), SOLID('1'), SOLID('2'), SOLID('3')];
@@ -141,6 +142,35 @@ test('song tracks pass voice options to their notes', () => {
   assert.deepEqual(lead.vibrato, { rate: 5 });
   assert.equal(drum.period, 12);
   assert.equal(drum.duty, undefined);
+});
+
+test('song repeats and drum kit', () => {
+  const { song } = parseSong({ tracks: [{ channel: 'pulse1', notes: '[C4 [E4:0.5]x2]x3 G4' }] });
+  assert.deepEqual(song.tracks[0].notes.map(n => n.note).join(' '), 'C4 E4 E4 C4 E4 E4 C4 E4 E4 G4');
+  assert.match(parseSong({ tracks: [{ channel: 'pulse1', notes: '[C4 E4' }] }).error, /unbalanced/);
+  assert.match(parseSong({ tracks: [{ channel: 'pulse1', notes: '[C4]x0' }] }).error, /repeat count/);
+  assert.match(parseSong({ tracks: [{ channel: 'pulse1', notes: '[[[[C4]x64]x64]x64]x64' }] }).error, /more than/);
+  assert.match(parseSong({ tracks: [{ channel: 'pulse1', notes: 'K' }] }).error, /bad note "K"/);
+
+  const player = new MusicPlayer({ main: { bpm: 120, tracks: [{ channel: 'noise', volume: 0.5, notes: 'K:0.5 S:0.5 H' }] } });
+  player.play('main');
+  const [kick] = player.advance(0.01);
+  assert.equal(kick.period, DRUMS.K.period);
+  assert.deepEqual(kick.vol, DRUMS.K.vol);
+  assert.equal(kick.volume, Math.min(1, 0.5 * DRUMS.K.volume));
+  const [snare] = player.advance(0.25);
+  assert.equal(snare.period, DRUMS.S.period);
+});
+
+test('sample game songs keep looping tracks in step', () => {
+  const code = readFileSync(new URL('../src/shared/test-games/platformer.js', import.meta.url), 'utf8');
+  const songs = new Function(`${code}; return SONGS;`)();
+  for (const [name, def] of Object.entries(songs)) {
+    const { song, error } = parseSong(def);
+    assert.equal(error, undefined, `${name}: ${error}`);
+    const lengths = song.tracks.map(t => t.notes.reduce((sum, n) => sum + n.beats, 0));
+    assert.ok(lengths.every(l => l === lengths[0]), `${name} track lengths ${lengths}`);
+  }
 });
 
 console.log(`\n${passed} passed`);

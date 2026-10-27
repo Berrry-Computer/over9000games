@@ -53,7 +53,10 @@ function getRequirementsSection() {
 - **Complex games**: Can have complex gameState (like Tetris boards, enemy arrays, etc.)
 - **Music**: every game should have background music. Declare songs in resources() and pick one with \`music: 'name'\` in update() (\`null\` = silence); the console sequences the notes
   - \`music: {main: {bpm: 140, loop: true, tracks: [{channel: 'pulse1', notes: "E5 E5 -:0.5 C5:0.5 G5:2", volume: 0.2, envelope: 'soft'}, ...]}}\` - up to 4 tracks
-  - notes are space separated \`NOTE[:beats]\` (C4, F#3, Bb2; \`-\` = rest; beats default 1); typical: melody on pulse1, bass on triangle, drums on noise
+  - notes are space separated \`NOTE[:beats]\` (C4, F#3, Bb2; \`-\` = rest; beats default 1); \`[C4:0.5 E4:0.5]x4\` repeats a group (groups can nest)
+  - noise tracks have a drum kit: \`K\` kick, \`S\` snare, \`H\` hi-hat, \`O\` open hat, e.g. \`"[K:0.5 H:0.5 S:0.5 H:0.5]x8"\`
+  - fun NES songs use all 4 channels: lead melody on pulse1, fast chord arpeggios (16th notes, low volume) on pulse2, bass bouncing between octaves on triangle (A2:0.5 A3:0.5, keep it at octave 2-3 or higher), drums on noise; end sections with a drum fill
+  - keep every track of a looping song the same total beats so they stay in step
   - tracks take the sound effect voice options below (\`duty\`, \`period\`, \`vibrato\`, \`arp\`, \`vol\`), e.g. a 0.25 duty lead with light vibrato, or a noise drum track with \`period: 12\`
   - sending the same song name every frame keeps it playing; a new name switches songs (e.g. 'title', 'level', 'boss', a non-looping 'death' jingle)
 - **Sound effects**: \`sounds: [{slotId: 0-7, soundId, channel: 'pulse1'|'pulse2'|'triangle'|'noise', note: 'C4' or frequency: Hz, duration: seconds, volume: 0-1, envelope: 'sharp'|'soft'|'fade'|'sustain'}]\`

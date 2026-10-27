@@ -438,6 +438,67 @@ const BAT_FLAP = [SPRITE_BAT, SPRITE_BAT_WINGS_DOWN];
 const BAT_FRAME_TIME = 0.15;
 
 // offset staggers objects so they don't all animate in lockstep
+const ENEMY_DEATH_TIME = 1.2;     // seconds a defeated enemy spends flipping off screen
+const ENEMY_DEATH_HOP = -110;     // upward pop when hit, px/s
+const ENEMY_DEATH_PUSH = 40;      // knocked away from the torch, px/s
+const POPUP_TIME = 0.8;           // the "100" score popup rises and fades
+const POPUP_RISE = 16;
+
+// A defeated enemy pops up, flips upside down and falls off screen (classic NES style)
+function killEnemy(enemy, hitVx) {
+  enemy.dyingTime = 0;
+  enemy.vx = Math.sign(hitVx || 1) * ENEMY_DEATH_PUSH;
+  enemy.vy = ENEMY_DEATH_HOP;
+  gameState.popups.push({ x: enemy.x, y: enemy.y - 4, time: 0 });
+}
+
+function updateEnemyDeaths(dt) {
+  for (const enemy of [...gameState.enemies, ...gameState.bats]) {
+    if (enemy.dyingTime === undefined || enemy.dyingTime >= ENEMY_DEATH_TIME) continue;
+    enemy.dyingTime += dt;
+    enemy.vy = Math.min(enemy.vy + GRAVITY_FALL * dt, MAX_FALL_SPEED);
+    enemy.x += enemy.vx * dt;
+    enemy.y += enemy.vy * dt;
+  }
+  for (const popup of gameState.popups) popup.time += dt;
+  gameState.popups = gameState.popups.filter(popup => popup.time < POPUP_TIME);
+}
+
+// Scorpions, bats, falling defeated enemies and score popups
+function enemySprites() {
+  const sprites = [];
+  for (const enemy of gameState.enemies) {
+    const dying = enemy.health <= 0;
+    if (dying && !(enemy.dyingTime < ENEMY_DEATH_TIME)) continue;
+    const x = Math.floor(enemy.x);
+    const y = Math.floor(enemy.y);
+    // Scorpions are 2 sprites wide: facing left swaps the halves and flips both
+    const facingLeft = enemy.vx < 0;
+    const [left, right] = facingLeft ? [SPRITE_SCORPION_BACK, SPRITE_SCORPION_FRONT] : [SPRITE_SCORPION_FRONT, SPRITE_SCORPION_BACK];
+    sprites.push({ spriteId: left, x, y, flipH: facingLeft, flipV: dying });
+    sprites.push({ spriteId: right, x: x + SPRITE_SIZE, y, flipH: facingLeft, flipV: dying });
+  }
+  for (const bat of gameState.bats) {
+    const dying = bat.health <= 0;
+    if (dying && !(bat.dyingTime < ENEMY_DEATH_TIME)) continue;
+    sprites.push({
+      // A defeated bat stops flapping and tumbles, flipping every 0.1s
+      spriteId: dying ? SPRITE_BAT : animFrame(BAT_FLAP, BAT_FRAME_TIME, bat.phase),
+      x: Math.floor(bat.x),
+      y: Math.floor(bat.y),
+      flipH: dying ? Math.floor(bat.dyingTime / 0.1) % 2 === 0 : bat.vx < 0,
+      flipV: dying
+    });
+  }
+  for (const popup of gameState.popups) {
+    const y = Math.floor(popup.y - POPUP_RISE * popup.time / POPUP_TIME);
+    String(ENEMY_KILL_SCORE).split('').forEach((digit, i) => {
+      sprites.push({ spriteId: 0x100 + digit.charCodeAt(0), x: Math.floor(popup.x) + i * SPRITE_SIZE, y });
+    });
+  }
+  return sprites;
+}
+
 function animFrame(frames, frameTime, offset) {
   return frames[Math.floor(gameState.animTime / frameTime + offset) % frames.length];
 }
@@ -525,114 +586,120 @@ function backdropTile(x, y) {
 }
 
 // Music for resources(): the console sequences the notes, update() only picks the song
-// Notes are NOTE:beats, '-' is a rest; at 120 BPM one beat is 0.5s
+// Notes are NOTE:beats, '-' is a rest, [ ... ]xN repeats; noise tracks play drums K S H O. At 140 BPM one beat is 0.43s
 const SONGS = {
-  // INTRO -> VERSE -> CHORUS -> VERSE -> CHORUS -> BRIDGE -> CHORUS (finale)
+  // Upbeat tomb run in A minor, 32 bars: A (Am Am F G Am Am F E) twice, B (F G Em Am F G E E), A again.
+  // Lead on pulse1, 16th-note chord arpeggios on pulse2, octave-bouncing bass, noise drum kit.
+  // Every track is 128 beats so they stay in step when the song loops.
   main: {
-    bpm: 120,
+    bpm: 140,
     tracks: [
       {
-        channel: 'pulse1', duty: 0.25, volume: 0.25, envelope: 'soft',
+        channel: 'pulse1', duty: 0.25, volume: 0.2, envelope: 'soft', vibrato: { rate: 6, depth: 0.08 },
         notes:
-          // INTRO (4 bars) - mysterious, sets the mood
-          "A3:1 -:0.5 C4:1 -:0.5 E4:1.5 -:1 E4:1 D4:1 C4:1.5 -:1 " +
-
-          // VERSE (8 bars) - sneaking through the tomb, main exploration theme
-          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 D4:0.5 C4:1 -:0.5 " +
-          "G3:1 -:0.5 B3:0.5 -:0.5 D4:1 D4:0.5 C4:0.5 B3:1 -:0.5 " +
-          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 F4:0.5 E4:1 -:0.5 " +
-          "D4:1 C4:1 B3:1 A3:1.5 -:1 " +
-
-          // CHORUS (8 bars) - DANGER! Main hook that repeats
-          "E4:0.5 E4:0.5 -:0.25 G4:0.5 -:0.25 A4:1 -:0.5 A4:0.5 G4:0.5 E4:1 -:0.5 " +
-          "D4:0.5 D4:0.5 -:0.25 F4:0.5 -:0.25 G4:1 -:0.5 G4:0.5 F4:0.5 D4:1 -:0.5 " +
-          "C4:0.5 E4:0.5 G4:0.5 B4:0.5 -:0.25 A4:1 -:0.5 G4:0.5 E4:0.5 D4:1 -:0.5 " +
-          "C4:1 B3:1 A3:1.5 -:1 A3:1 -:0.5 " +
-
-          // VERSE (repeat - 8 bars) - deeper into danger, slight variation
-          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 D4:0.5 C4:1 -:0.5 " +
-          "G3:1 -:0.5 B3:0.5 -:0.5 D4:1 D4:0.5 C4:0.5 B3:1 -:0.5 " +
-          "A3:1 -:0.5 C4:0.5 -:0.5 E4:1 E4:0.5 F4:0.5 G4:1 -:0.5 " +
-          "F4:1 E4:1 D4:1 C4:1.5 -:1 " +
-
-          // CHORUS (repeat - 8 bars) - main hook returns
-          "E4:0.5 E4:0.5 -:0.25 G4:0.5 -:0.25 A4:1 -:0.5 A4:0.5 G4:0.5 E4:1 -:0.5 " +
-          "D4:0.5 D4:0.5 -:0.25 F4:0.5 -:0.25 G4:1 -:0.5 G4:0.5 F4:0.5 D4:1 -:0.5 " +
-          "C4:0.5 E4:0.5 G4:0.5 B4:0.5 -:0.25 A4:1 -:0.5 G4:0.5 E4:0.5 D4:1 -:0.5 " +
-          "C4:1 B3:1 A3:1.5 -:1 A3:1 -:0.5 " +
-
-          // BRIDGE (4 bars) - discovery moment! Chromatic tension + treasure glimpse
-          "C5:0.5 C5:0.5 E5:0.5 -:0.5 G5:1 -:0.5 F5:0.5 E5:0.5 D5:1 -:0.5 " +
-          "G#4:0.25 G4:0.25 F#4:0.25 F4:0.25 E4:0.5 D#4:0.25 D4:0.25 C#4:0.25 C4:0.25 -:0.5 " +
-
-          // CHORUS FINALE (8 bars) - triumphant escape, ultimate payoff
-          "E4:0.5 E4:0.5 -:0.25 G4:0.5 -:0.25 A4:1 -:0.5 A4:0.5 G4:0.5 E4:1 -:0.5 " +
-          "D4:0.5 D4:0.5 -:0.25 F4:0.5 -:0.25 G4:1 -:0.5 G4:0.5 F4:0.5 D4:1 -:0.5 " +
-          "C4:0.5 E4:0.5 G4:0.5 B4:0.5 -:0.25 A4:1 -:0.5 G4:0.5 E4:0.5 D4:1 -:0.5 " +
-          "E4:1 -:0.5 A4:1.5 -:0.5 A4:2"
+          // A: main hook
+          "E4:0.5 A4:0.5 -:0.5 A4:0.5 B4:0.5 C5:1 B4:0.5 A4:1 E4:1 -:1 E4:0.5 G4:0.5 " +
+          "A4:0.5 A4:0.5 -:0.5 A4:0.5 C5:0.5 D5:1 C5:0.5 B4:1.5 G4:0.5 D5:2 " +
+          "E5:0.5 E5:0.5 -:0.5 D5:0.5 C5:0.5 B4:0.5 C5:1 A4:1 E4:1 A4:0.5 B4:0.5 C5:1 " +
+          "D5:0.5 C5:0.5 A4:0.5 F4:0.5 A4:1 C5:1 B4:1 G#4:1 E4:1 -:1 " +
+          // A again, ending climbs into B
+          "E4:0.5 A4:0.5 -:0.5 A4:0.5 B4:0.5 C5:1 B4:0.5 A4:1 E4:1 -:1 E4:0.5 G4:0.5 " +
+          "A4:0.5 A4:0.5 -:0.5 A4:0.5 C5:0.5 D5:1 C5:0.5 B4:1.5 G4:0.5 D5:2 " +
+          "E5:0.5 E5:0.5 -:0.5 D5:0.5 C5:0.5 B4:0.5 C5:1 A4:1 E4:1 A4:0.5 B4:0.5 C5:1 " +
+          "D5:0.5 C5:0.5 A4:0.5 F4:0.5 A4:1 C5:1 B4:0.5 G#4:0.5 B4:0.5 D5:0.5 E5:2 " +
+          // B: higher and busier
+          "C5:0.5 C5:0.5 A4:0.5 C5:0.5 F5:1 E5:1 D5:0.5 D5:0.5 B4:0.5 D5:0.5 G5:1 F5:1 " +
+          "E5:0.5 E5:0.5 B4:0.5 E5:0.5 G5:1 B5:1 A5:2 -:1 E5:0.5 G5:0.5 " +
+          "A5:0.5 G5:0.5 F5:0.5 E5:0.5 F5:1 C5:1 G5:0.5 F5:0.5 E5:0.5 D5:0.5 D5:1 B4:1 " +
+          "G#4:0.5 B4:0.5 E5:0.5 G#5:0.5 B5:1 G#5:1 E5:1 D5:0.5 C5:0.5 B4:1 G#4:1 " +
+          // A to finish, then loop
+          "E4:0.5 A4:0.5 -:0.5 A4:0.5 B4:0.5 C5:1 B4:0.5 A4:1 E4:1 -:1 E4:0.5 G4:0.5 " +
+          "A4:0.5 A4:0.5 -:0.5 A4:0.5 C5:0.5 D5:1 C5:0.5 B4:1.5 G4:0.5 D5:2 " +
+          "E5:0.5 E5:0.5 -:0.5 D5:0.5 C5:0.5 B4:0.5 C5:1 A4:1 E4:1 A4:0.5 B4:0.5 C5:1 " +
+          "D5:0.5 C5:0.5 A4:0.5 F4:0.5 A4:1 C5:1 B4:1 G#4:1 E4:1 -:1"
       },
       {
-        channel: 'triangle', volume: 0.2, envelope: 'sustain',
+        channel: 'pulse2', duty: 0.125, volume: 0.075, envelope: 'sharp',
         notes:
-          // Intro bass (4 bars) - ominous entry
-          "A1:1 -:0.5 A1:1 -:0.5 E2:1 -:0.5 A1:1 -:0.5 " +
-          // Verse bass pattern (8 bars) - walking quarter notes
-          "A1:1 A1:1 E2:1 A1:1 G1:1 G1:1 D2:1 G1:1 " +
-          "F1:1 F1:1 C2:1 F1:1 E1:1 E1:1 B1:1 E1:1 " +
-          // Chorus bass (8 bars) - powerful dotted quarters
-          "A1:1.5 -:0.5 E2:1 A1:1 G1:1.5 -:0.5 D2:1 G1:1 " +
-          "F1:1.5 -:0.5 C2:1 F1:1 E1:1.5 G#1:1 A1:1 -:0.5 " +
-          // Verse bass (repeat - 8 bars)
-          "A1:1 A1:1 E2:1 A1:1 G1:1 G1:1 D2:1 G1:1 " +
-          "F1:1 F1:1 C2:1 F1:1 E1:1 E1:1 B1:1 E1:1 " +
-          // Chorus bass (repeat - 8 bars)
-          "A1:1.5 -:0.5 E2:1 A1:1 G1:1.5 -:0.5 D2:1 G1:1 " +
-          "F1:1.5 -:0.5 C2:1 F1:1 E1:1.5 G#1:1 A1:1 -:0.5 " +
-          // Bridge bass (4 bars) - tension/discovery
-          "F1:0.5 F1:0.5 C2:1 -:1 G1:0.5 G1:0.5 D2:1 -:1 " +
-          // Chorus finale (8 bars) - triumphant ending
-          "A1:1.5 -:0.5 E2:1 A1:1 G1:1.5 -:0.5 D2:1 G1:1 " +
-          "F1:1.5 -:0.5 C2:1 F1:1 E1:1.5 A1:1.5 A1:2"
+          // A twice: Am Am F G Am Am F E
+          "[[A3:0.25 C4:0.25 E4:0.25 C4:0.25]x8 [F3:0.25 A3:0.25 C4:0.25 A3:0.25]x4 [G3:0.25 B3:0.25 D4:0.25 B3:0.25]x4 " +
+          "[A3:0.25 C4:0.25 E4:0.25 C4:0.25]x8 [F3:0.25 A3:0.25 C4:0.25 A3:0.25]x4 [E3:0.25 G#3:0.25 B3:0.25 G#3:0.25]x4]x2 " +
+          // B: F G Em Am F G E E
+          "[F3:0.25 A3:0.25 C4:0.25 A3:0.25]x4 [G3:0.25 B3:0.25 D4:0.25 B3:0.25]x4 [E3:0.25 G3:0.25 B3:0.25 G3:0.25]x4 [A3:0.25 C4:0.25 E4:0.25 C4:0.25]x4 " +
+          "[F3:0.25 A3:0.25 C4:0.25 A3:0.25]x4 [G3:0.25 B3:0.25 D4:0.25 B3:0.25]x4 [E3:0.25 G#3:0.25 B3:0.25 G#3:0.25]x8 " +
+          // A
+          "[A3:0.25 C4:0.25 E4:0.25 C4:0.25]x8 [F3:0.25 A3:0.25 C4:0.25 A3:0.25]x4 [G3:0.25 B3:0.25 D4:0.25 B3:0.25]x4 " +
+          "[A3:0.25 C4:0.25 E4:0.25 C4:0.25]x8 [F3:0.25 A3:0.25 C4:0.25 A3:0.25]x4 [E3:0.25 G#3:0.25 B3:0.25 G#3:0.25]x4"
+      },
+      {
+        channel: 'triangle', volume: 0.25, envelope: 'sharp',
+        notes:
+          // Octave bounce on the chord roots; the last bar of each A walks up the E chord
+          "[[A2:0.5 A3:0.5]x8 [F2:0.5 F3:0.5]x4 [G2:0.5 G3:0.5]x4 [A2:0.5 A3:0.5]x8 [F2:0.5 F3:0.5]x4 " +
+          "E2:0.5 E3:0.5 E2:0.5 E3:0.5 G#2:0.5 G#3:0.5 B2:0.5 B3:0.5]x2 " +
+          "[F2:0.5 F3:0.5]x4 [G2:0.5 G3:0.5]x4 [E2:0.5 E3:0.5]x4 [A2:0.5 A3:0.5]x4 " +
+          "[F2:0.5 F3:0.5]x4 [G2:0.5 G3:0.5]x4 [E2:0.5 E3:0.5]x6 G#2:0.5 B2:0.5 D3:0.5 E3:0.5 " +
+          "[A2:0.5 A3:0.5]x8 [F2:0.5 F3:0.5]x4 [G2:0.5 G3:0.5]x4 [A2:0.5 A3:0.5]x8 [F2:0.5 F3:0.5]x4 " +
+          "E2:0.5 E3:0.5 E2:0.5 E3:0.5 G#2:0.5 G#3:0.5 B2:0.5 B3:0.5"
+      },
+      {
+        // K kick, S snare, H hi-hat, O open hat; a snare roll fills the end of each 8 bars
+        channel: 'noise', volume: 0.25,
+        notes:
+          "[[K:0.5 H:0.5 S:0.5 H:0.5 K:0.5 K:0.5 S:0.5 H:0.5]x7 K:0.5 H:0.5 S:0.5 H:0.5 S:0.25 S:0.25 S:0.25 S:0.25 S:0.5 O:0.5]x2 " +
+          "[K:0.5 H:0.25 H:0.25 S:0.5 H:0.5 K:0.25 K:0.25 H:0.5 S:0.5 O:0.5]x7 S:0.25 S:0.25 S:0.25 S:0.25 S:0.25 S:0.25 S:0.25 S:0.25 K:0.5 S:0.5 K:0.5 O:0.5 " +
+          "[K:0.5 H:0.5 S:0.5 H:0.5 K:0.5 K:0.5 S:0.5 H:0.5]x7 K:0.5 H:0.5 S:0.5 H:0.5 S:0.25 S:0.25 S:0.25 S:0.25 S:0.5 O:0.5"
       }
     ]
   },
-  // Deeper in: slower, sparse and echoing, with a dripping noise channel. 32 beats per track
+  // Deeper in: slower and echoing, Am F Dm E Am F G E twice. Every track is 64 beats
   cavern: {
-    bpm: 96,
+    bpm: 100,
     tracks: [
       {
-        channel: 'pulse2', duty: 0.125, volume: 0.22, envelope: 'fade', vibrato: { rate: 5, depth: 0.15 },
+        channel: 'pulse2', duty: 0.125, volume: 0.2, envelope: 'fade', vibrato: { rate: 5, depth: 0.15 },
         notes:
-          "E4:1 -:1 G4:0.5 A4:0.5 -:1 C5:1 B4:1 -:2 " +
-          "D4:1 -:1 F4:0.5 G4:0.5 -:1 A4:1 G4:1 -:2 " +
-          "E4:1 -:1 G4:0.5 A4:0.5 -:1 E5:1 D5:1 C5:1 B4:1 " +
-          "A4:2 -:1 G4:0.5 E4:0.5 A4:3 -:1"
+          "E5:2 C5:1 B4:1 A4:3 -:1 F4:1 A4:1 D5:1.5 C5:0.5 B4:3 -:1 " +
+          "E5:1.5 D5:0.5 C5:1 E5:1 F5:2 E5:1 C5:1 D5:1.5 B4:0.5 G4:1 B4:1 G#4:1 B4:1 E5:2 " +
+          "-:2 A4:1 C5:1 C5:2 A4:2 D5:1 F5:1 E5:1 D5:1 E5:4 " +
+          "A5:2 G5:1 E5:1 F5:1.5 E5:0.5 C5:2 D5:2 B4:1 G4:1 G#4:4"
       },
       {
-        channel: 'triangle', volume: 0.22, envelope: 'sustain',
-        notes: "A1:4 E2:4 D2:4 A1:4 A1:4 C2:4 E2:4 A1:4"
+        channel: 'pulse1', duty: 0.25, volume: 0.07, envelope: 'fade',
+        notes:
+          "[[A3:0.5 E4:0.5 A4:0.5 C5:0.5]x2 [F3:0.5 C4:0.5 F4:0.5 A4:0.5]x2 [D3:0.5 A3:0.5 D4:0.5 F4:0.5]x2 [E3:0.5 B3:0.5 E4:0.5 G#4:0.5]x2 " +
+          "[A3:0.5 E4:0.5 A4:0.5 C5:0.5]x2 [F3:0.5 C4:0.5 F4:0.5 A4:0.5]x2 [G3:0.5 D4:0.5 G4:0.5 B4:0.5]x2 [E3:0.5 B3:0.5 E4:0.5 G#4:0.5]x2]x2"
       },
       {
-        channel: 'noise', period: 1, mode: 'periodic', volume: 0.06, envelope: 'sharp', // water drips
-        notes: "C6:0.25 -:5.75 G5:0.25 -:1.75 C6:0.25 -:7.75 C6:0.25 -:3.75 E6:0.25 -:3.75 C6:0.25 -:7.75"
+        channel: 'triangle', volume: 0.3, envelope: 'sustain',
+        notes: "[A2:1.5 E3:0.5 A3:2 F2:1.5 C3:0.5 F3:2 D3:1.5 A3:0.5 D4:2 E2:1.5 B2:0.5 E3:2 " +
+               "A2:1.5 E3:0.5 A3:2 F2:1.5 C3:0.5 F3:2 G2:1.5 D3:0.5 G3:2 E2:1.5 B2:0.5 E3:2]x2"
+      },
+      {
+        channel: 'noise', volume: 0.18,
+        notes: "[K:1.5 H:0.5 S:1 H:0.5 H:0.5]x15 K:1 S:0.5 S:0.5 S:0.5 S:0.5 O:1"
       }
     ]
   },
-  // Victory fanfare at the exit, played once
+  // Victory fanfare at the exit, played once (about 3.2s, matching WIN_PAUSE)
   win: {
-    bpm: 150,
+    bpm: 180,
     loop: false,
     tracks: [
-      { channel: 'pulse1', volume: 0.35, envelope: 'soft', notes: "C5:0.5 E5:0.5 G5:0.5 C6:1.5 -:0.5 A5:0.5 B5:0.5 C6:2" },
-      { channel: 'triangle', volume: 0.25, envelope: 'sustain', notes: "C3:1.5 G2:1.5 C3:1 -:0.5 F2:0.5 G2:0.5 C3:1" }
+      { channel: 'pulse1', duty: 0.25, volume: 0.32, envelope: 'soft', notes: "G4:0.5 C5:0.5 E5:0.5 G5:1 E5:0.5 G5:2 -:0.5 A5:0.5 B5:0.5 C6:3" },
+      { channel: 'pulse2', duty: 0.5, volume: 0.16, envelope: 'soft', notes: "E4:0.5 G4:0.5 C5:0.5 E5:1 C5:0.5 E5:2 -:0.5 F5:0.5 G5:0.5 E5:3" },
+      { channel: 'triangle', volume: 0.3, envelope: 'sustain', notes: "C3:0.5 C3:0.5 C3:0.5 C3:1 C3:0.5 C3:2 -:0.5 F3:0.5 G3:0.5 C4:3" },
+      { channel: 'noise', volume: 0.3, notes: "K:0.5 K:0.5 K:0.5 S:1 K:0.5 S:2 -:0.5 S:0.25 S:0.25 S:0.5 K:0.5 O:2.5" }
     ]
   },
-  // Sad descending notes, played once
+  // Wobbly chromatic slide down, played once during the 3s death pause
   death: {
-    bpm: 120,
+    bpm: 160,
     loop: false,
     tracks: [
-      { channel: 'pulse1', volume: 0.4, envelope: 'soft', notes: "C4:1 -:0.5 B3:1 -:0.5 A3:1 -:0.5 G3:1.5 -:0.5 F3:2" }
+      { channel: 'pulse1', duty: 0.5, volume: 0.3, envelope: 'soft', vibrato: { rate: 7, depth: 0.3 }, notes: "C5:0.5 B4:0.5 A#4:0.5 A4:1 -:0.5 G#4:0.5 G4:0.5 F#4:0.5 F4:3" },
+      { channel: 'triangle', volume: 0.3, envelope: 'sustain', notes: "F3:2 -:0.5 E3:1 D#3:1 D3:3" },
+      { channel: 'noise', volume: 0.25, notes: "S:2 -:0.5 S:1 S:1 K:3" }
     ]
   }
 };
@@ -692,6 +759,7 @@ function update(deltaTime, input) {
         { x: 420, y: 48, vx: -30, vy: 0, health: 1, pattern: 'sine', phase: Math.PI/2, minY: 16, maxY: 80 },  // Flying bat
         { x: 300, y: 176, vx: 30, vy: 0, health: 1, pattern: 'sine', phase: 0, minY: 150, maxY: 200 }  // Cavern bat
       ],
+      popups: [], // floating score numbers from defeated enemies
       tilemap: LEVEL_ROWS.map(parseLevelRow), // copy for collisions; the console draws resources().tilemap
       coins: [
         { x: 48, y: 56, collected: false },
@@ -751,6 +819,7 @@ function update(deltaTime, input) {
     for (const torch of WALL_TORCHES) gameState.bgEdits.push({ x: torch.x, y: torch.y, tileId });
   }
   gameState.animTime += dt;
+  updateEnemyDeaths(dt);
 
   // Title screen: wait for the player before starting the level
   if (!gameState.started) {
@@ -861,57 +930,7 @@ function update(deltaTime, input) {
       flipH: facingLeft
     });
 
-    // Render scorpions (2 sprites wide with sprite flipping)
-    for (const enemy of gameState.enemies) {
-      if (enemy.health > 0) {
-        const enemyFacingLeft = enemy.vx < 0;
-        const enemyRenderX = Math.floor(enemy.x);
-        const enemyRenderY = Math.floor(enemy.y);
-
-        if (enemyFacingLeft) {
-          // When facing left, swap sprite order and flip both
-          sprites.push({
-            spriteId: SPRITE_SCORPION_BACK,
-            x: enemyRenderX,
-            y: enemyRenderY,
-            flipH: true
-          });
-          sprites.push({
-            spriteId: SPRITE_SCORPION_FRONT,
-            x: enemyRenderX + SPRITE_SIZE,
-            y: enemyRenderY,
-            flipH: true
-          });
-        } else {
-          // When facing right, normal order without flip
-          sprites.push({
-            spriteId: SPRITE_SCORPION_FRONT,
-            x: enemyRenderX,
-            y: enemyRenderY,
-            flipH: false
-          });
-          sprites.push({
-            spriteId: SPRITE_SCORPION_BACK,
-            x: enemyRenderX + SPRITE_SIZE,
-            y: enemyRenderY,
-            flipH: false
-          });
-        }
-      }
-    }
-
-    // Render bats (with sprite flipping)
-    for (const bat of gameState.bats) {
-      if (bat.health > 0) {
-        const batFacingLeft = bat.vx < 0;
-        sprites.push({
-          spriteId: SPRITE_BAT,
-          x: Math.floor(bat.x),
-          y: Math.floor(bat.y),
-          flipH: batFacingLeft
-        });
-      }
-    }
+    sprites.push(...enemySprites());
 
     // After reaching the exit, hold the scene while the fanfare plays, then end the game
     const text = [];
@@ -1003,7 +1022,8 @@ function update(deltaTime, input) {
 
   // Helper function to check if a tile is solid
   function isSolidTile(tileId) {
-    return tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL;
+    // Spikes are solid so walking or jumping into them just bumps; only landing on top kills
+    return tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL || tileId === TILE_SPIKES;
   }
 
   // Helper function to get tile at position
@@ -1088,7 +1108,7 @@ function update(deltaTime, input) {
     for (let x = playerLeft; x <= playerRight; x += 4) {
       const tileId = getTileAt(x, bottomEdge);
 
-      // Check for deadly tiles
+      // Landing on spikes is deadly
       if (tileId === TILE_SPIKES && !gameState.player.isDead) {
         gameState.player.health = 0;
         gameState.player.isDead = true;
@@ -1195,7 +1215,7 @@ function update(deltaTime, input) {
 
   } // End of if (!gameState.player.isDead) collision check block
 
-  // Check for deadly tiles (spikes) and exit - checked even when alive
+  // Check for the exit
   if (!gameState.player.isDead) {
     const playerTop = gameState.player.y;
     const playerBottom = gameState.player.y + PLAYER_HEIGHT - 1;
@@ -1205,12 +1225,6 @@ function update(deltaTime, input) {
     for (let x = playerLeft; x <= playerRight; x += 4) {
       for (let y = playerTop; y <= playerBottom; y += 4) {
         const tileId = getTileAt(x, y);
-        if (tileId === TILE_SPIKES && !gameState.player.isDead) {
-          gameState.player.health = 0;
-          gameState.player.isDead = true;
-          gameState.player.deathTimer = 3.0;
-          sounds.push(SFX.spikes);
-        }
         if (tileId === TILE_EXIT && !gameState.levelComplete) {
           gameState.levelComplete = true;
           gameState.winTimer = WIN_PAUSE;
@@ -1353,6 +1367,7 @@ function update(deltaTime, input) {
         if (enemy.health <= 0) {
           gameState.score += ENEMY_KILL_SCORE;
           sounds.push(SFX.enemyKill);
+          killEnemy(enemy, proj.vx);
         } else {
           sounds.push(SFX.enemyHit);
         }
@@ -1369,6 +1384,7 @@ function update(deltaTime, input) {
         if (bat.health <= 0) {
           gameState.score += ENEMY_KILL_SCORE;
           sounds.push(SFX.enemyKill);
+          killEnemy(bat, proj.vx);
         }
         return false;
       }
@@ -1452,57 +1468,7 @@ function update(deltaTime, input) {
     });
   }
 
-  // Render scorpions (2 sprites wide with sprite flipping)
-  for (const enemy of gameState.enemies) {
-    if (enemy.health > 0) {
-      const enemyFacingLeft = enemy.vx < 0;
-      const enemyRenderX = Math.floor(enemy.x);
-      const enemyRenderY = Math.floor(enemy.y);
-
-      if (enemyFacingLeft) {
-        // When facing left, swap sprite order and flip both
-        sprites.push({
-          spriteId: SPRITE_SCORPION_BACK,
-          x: enemyRenderX,
-          y: enemyRenderY,
-          flipH: true
-        });
-        sprites.push({
-          spriteId: SPRITE_SCORPION_FRONT,
-          x: enemyRenderX + SPRITE_SIZE,
-          y: enemyRenderY,
-          flipH: true
-        });
-      } else {
-        // When facing right, normal order without flip
-        sprites.push({
-          spriteId: SPRITE_SCORPION_FRONT,
-          x: enemyRenderX,
-          y: enemyRenderY,
-          flipH: false
-        });
-        sprites.push({
-          spriteId: SPRITE_SCORPION_BACK,
-          x: enemyRenderX + SPRITE_SIZE,
-          y: enemyRenderY,
-          flipH: false
-        });
-      }
-    }
-  }
-
-  // Render bats (single sprite with sprite flipping)
-  for (const bat of gameState.bats) {
-    if (bat.health > 0) {
-      const batFacingLeft = bat.vx < 0;
-      sprites.push({
-        spriteId: animFrame(BAT_FLAP, BAT_FRAME_TIME, bat.phase),
-        x: Math.floor(bat.x),
-        y: Math.floor(bat.y),
-        flipH: batFacingLeft
-      });
-    }
-  }
+  sprites.push(...enemySprites());
 
   // Render torches
   for (const proj of gameState.projectiles) {
