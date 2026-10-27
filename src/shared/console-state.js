@@ -14,7 +14,7 @@
  */
 import { MAX_SPRITES, MAX_TILES_X, MAX_TILES_Y, getDefaultPalette } from "./game-runner-common.js";
 import { BITMAP_FONT, FONT_TILE_BASE } from "./bitmap-font.js";
-import { checkMusic } from "./music.js";
+import { checkMusic, checkVoice } from "./music.js";
 
 export const TEXT_COLS = 16;
 export const TEXT_ROWS = 16;
@@ -112,6 +112,10 @@ export function checkCommands(commands) {
     if (commands[key] !== undefined && commands[key] !== null && !Array.isArray(commands[key])) {
       return `update() returned ${key} that is not an array`;
     }
+  }
+  for (const sound of commands.sounds || []) {
+    const error = sound && checkVoice(sound);
+    if (error) return `sound ${JSON.stringify(sound.soundId ?? sound.slotId)}: ${error}`;
   }
   return null;
 }

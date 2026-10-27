@@ -532,7 +532,7 @@ const SONGS = {
     bpm: 120,
     tracks: [
       {
-        channel: 'pulse1', volume: 0.25, envelope: 'soft',
+        channel: 'pulse1', duty: 0.25, volume: 0.25, envelope: 'soft',
         notes:
           // INTRO (4 bars) - mysterious, sets the mood
           "A3:1 -:0.5 C4:1 -:0.5 E4:1.5 -:1 E4:1 D4:1 C4:1.5 -:1 " +
@@ -601,7 +601,7 @@ const SONGS = {
     bpm: 96,
     tracks: [
       {
-        channel: 'pulse2', volume: 0.2, envelope: 'fade',
+        channel: 'pulse2', duty: 0.125, volume: 0.22, envelope: 'fade', vibrato: { rate: 5, depth: 0.15 },
         notes:
           "E4:1 -:1 G4:0.5 A4:0.5 -:1 C5:1 B4:1 -:2 " +
           "D4:1 -:1 F4:0.5 G4:0.5 -:1 A4:1 G4:1 -:2 " +
@@ -613,7 +613,7 @@ const SONGS = {
         notes: "A1:4 E2:4 D2:4 A1:4 A1:4 C2:4 E2:4 A1:4"
       },
       {
-        channel: 'noise', volume: 0.06, envelope: 'sharp', mode: 'periodic',
+        channel: 'noise', period: 1, mode: 'periodic', volume: 0.06, envelope: 'sharp', // water drips
         notes: "C6:0.25 -:5.75 G5:0.25 -:1.75 C6:0.25 -:7.75 C6:0.25 -:3.75 E6:0.25 -:3.75 C6:0.25 -:7.75"
       }
     ]
@@ -637,22 +637,24 @@ const SONGS = {
   }
 };
 
-// Sound effects. Each event gets its own soundId so a new one restarts its slot
+// Sound effects. Each event gets its own soundId so a new one restarts its slot.
+// duty 0.25/0.125 gives the thin NES pulse; noise period 0-15 goes from hiss to rumble;
+// arp/vol are per-frame (1/60s) macros
 const SFX = {
-  jump:        { slotId: 0, soundId: 'jump', channel: 'pulse1', frequency: 280, duration: 0.14, volume: 0.35, envelope: 'soft', sweep: { target: 640, time: 0.12 } },
-  throwTorch:  { slotId: 1, soundId: 'throw', channel: 'noise', mode: 'random', duration: 0.12, volume: 0.3, envelope: 'fade' },
-  enemyHit:    { slotId: 2, soundId: 'enemyHit', channel: 'pulse2', frequency: 500, duration: 0.08, volume: 0.35, envelope: 'sharp' },
-  enemyKill:   { slotId: 2, soundId: 'enemyKill', channel: 'pulse2', frequency: 900, duration: 0.2, volume: 0.35, envelope: 'fade', sweep: { target: 110, time: 0.2 } },
-  coin:        { slotId: 3, soundId: 'coin', channel: 'pulse2', note: 'B5', duration: 0.07, volume: 0.35, envelope: 'sharp' },
-  coinHigh:    { slotId: 3, soundId: 'coinHigh', channel: 'pulse2', note: 'E6', duration: 0.3, volume: 0.35, envelope: 'fade' },
-  brick:       { slotId: 4, soundId: 'brick', channel: 'noise', mode: 'random', duration: 0.22, volume: 0.45, envelope: 'fade' },
-  brickThud:   { slotId: 5, soundId: 'brickThud', channel: 'triangle', frequency: 150, duration: 0.1, volume: 0.6, envelope: 'sharp', sweep: { target: 60, time: 0.1 } },
-  land:        { slotId: 5, soundId: 'land', channel: 'triangle', frequency: 110, duration: 0.07, volume: 0.45, envelope: 'sharp', sweep: { target: 50, time: 0.07 } },
-  hurt:        { slotId: 6, soundId: 'hurt', channel: 'pulse1', frequency: 520, duration: 0.25, volume: 0.4, envelope: 'fade', sweep: { target: 130, time: 0.25 } },
-  death:       { slotId: 7, soundId: 'death', channel: 'noise', mode: 'random', duration: 0.5, volume: 0.6, envelope: 'fade' },
-  spikes:      { slotId: 7, soundId: 'spikes', channel: 'noise', mode: 'periodic', frequency: 700, duration: 0.4, volume: 0.55, envelope: 'fade' }
+  jump:        { slotId: 0, soundId: 'jump', channel: 'pulse1', duty: 0.25, frequency: 260, duration: 0.14, volume: 0.35, envelope: 'soft', sweep: { target: 620, time: 0.12, curve: 'exp' } },
+  throwTorch:  { slotId: 1, soundId: 'throw', channel: 'noise', period: 3, duration: 0.12, volume: 0.25, vol: [1, 0.8, 0.6, 0.45, 0.3, 0.2, 0.1] },
+  enemyHit:    { slotId: 2, soundId: 'enemyHit', channel: 'pulse2', duty: 0.125, frequency: 500, duration: 0.06, volume: 0.6, envelope: 'sharp' },
+  enemyKill:   { slotId: 2, soundId: 'enemyKill', channel: 'pulse2', duty: 0.25, frequency: 900, duration: 0.2, volume: 0.5, envelope: 'fade', sweep: { target: 110, time: 0.2, curve: 'exp' } },
+  // Two-note chime in one sound: B5 for 4 frames, then up 5 semitones to E6 while it fades
+  coin:        { slotId: 3, soundId: 'coin', channel: 'pulse2', duty: 0.25, note: 'B5', duration: 0.35, volume: 0.35,
+                 arp: [0, 0, 0, 0, 5], vol: [1, 1, 1, 1, 1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.42, 0.35, 0.28, 0.22, 0.16, 0.11, 0.07, 0.04] },
+  brick:       { slotId: 4, soundId: 'brick', channel: 'noise', period: 9, duration: 0.22, volume: 0.35, envelope: 'fade' },
+  brickThud:   { slotId: 5, soundId: 'brickThud', channel: 'triangle', frequency: 150, duration: 0.1, volume: 0.6, envelope: 'sharp', sweep: { target: 55, time: 0.1, curve: 'exp' } },
+  land:        { slotId: 5, soundId: 'land', channel: 'noise', period: 13, duration: 0.07, volume: 0.3, envelope: 'sharp' },
+  hurt:        { slotId: 6, soundId: 'hurt', channel: 'pulse1', duty: 0.125, frequency: 520, duration: 0.25, volume: 0.6, envelope: 'fade', sweep: { target: 130, time: 0.25, curve: 'exp' }, vibrato: { rate: 18, depth: 1 } },
+  death:       { slotId: 7, soundId: 'death', channel: 'noise', period: 12, duration: 0.6, volume: 0.45, envelope: 'fade' },
+  spikes:      { slotId: 7, soundId: 'spikes', channel: 'noise', mode: 'periodic', period: 6, duration: 0.35, volume: 0.35, envelope: 'fade' }
 };
-const COIN_CHIME_DELAY = 0.07; // second coin note follows the first, like a two-note chime
 const WIN_PAUSE = 3.2;         // seconds of victory jingle before the game ends
 
 let gameState;
@@ -725,7 +727,6 @@ function update(deltaTime, input) {
         targetX: 0  // Target camera position (where we want to be)
       },
       bgEdits: [], // tilemap changes to send to the console this frame
-      soundQueue: [], // {delay, sound}: effects to send a little later
       torchTimer: 0,
       torchFrame: 0,
       inCavern: false,
@@ -740,14 +741,6 @@ function update(deltaTime, input) {
   // Seconds since last frame, capped so a hitch can't move anything through an 8px platform
   const dt = Math.min(deltaTime, 1 / 30);
   const sounds = [];
-
-  // Send queued effects whose delay has passed
-  gameState.soundQueue = gameState.soundQueue.filter(queued => {
-    queued.delay -= dt;
-    if (queued.delay > 0) return true;
-    sounds.push(queued.sound);
-    return false;
-  });
 
   // Flicker the wall torches by swapping their tiles in the console's tilemap
   gameState.torchTimer += dt;
@@ -1391,9 +1384,7 @@ function update(deltaTime, input) {
         gameState.player.y + PLAYER_HEIGHT > coin.y && gameState.player.y < coin.y + COIN_SIZE) {
       coin.collected = true;
       gameState.score += COIN_SCORE;
-      // Two-note chime: the second note is sent a moment later from the sound queue
       sounds.push(SFX.coin);
-      gameState.soundQueue.push({ delay: COIN_CHIME_DELAY, sound: SFX.coinHigh });
     }
   }
 

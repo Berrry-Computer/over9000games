@@ -6,7 +6,7 @@
 import assert from 'assert/strict';
 import { ConsoleState, checkTilemap, checkConsoleResources, checkCommands } from '../src/shared/console-state.js';
 import { ConsoleRenderer } from '../src/shared/console-renderer.js';
-import { MusicPlayer, parseSong } from '../src/shared/music.js';
+import { MusicPlayer, parseSong, checkVoice } from '../src/shared/music.js';
 
 const SOLID = (digit) => Array(8).fill(digit.repeat(8));
 const sprites = [SOLID('0'), SOLID('1'), SOLID('2'), SOLID('3')];
@@ -116,6 +116,31 @@ test('music sequencer timing, looping and switching', () => {
   once.play('jingle');
   assert.equal(once.advance(0.01).length, 1);
   assert.equal(once.advance(5).length, 0);
+});
+
+test('voice options are validated for sounds and tracks', () => {
+  assert.equal(checkVoice({ duty: 0.25, period: 12, arp: [0, 4, 7], vol: [1, 0.5], vibrato: { rate: 6, depth: 0.2 }, sweep: { target: 100, curve: 'exp' } }), null);
+  assert.equal(checkVoice({ frequency: 440, mode: 'periodic' }), null); // old games: no new options
+  assert.match(checkVoice({ duty: 0.3 }), /duty/);
+  assert.match(checkVoice({ period: 16 }), /period/);
+  assert.match(checkVoice({ arp: '0 4 7' }), /arp/);
+  assert.match(checkVoice({ vol: [2] }), /vol/);
+  assert.match(checkVoice({ sweep: { curve: 'log' } }), /curve/);
+  assert.match(checkCommands({ sounds: [{ soundId: 'zap', duty: 1 }] }), /sound "zap": duty/);
+  assert.match(checkConsoleResources({ music: { main: { tracks: [{ channel: 'noise', period: -1, notes: 'C4' }] } } }), /track 0 period/);
+});
+
+test('song tracks pass voice options to their notes', () => {
+  const player = new MusicPlayer({ main: { tracks: [
+    { channel: 'pulse1', duty: 0.125, vibrato: { rate: 5 }, notes: 'C4' },
+    { channel: 'noise', period: 12, notes: 'C4' }
+  ] } });
+  player.play('main');
+  const [lead, drum] = player.advance(0.01);
+  assert.equal(lead.duty, 0.125);
+  assert.deepEqual(lead.vibrato, { rate: 5 });
+  assert.equal(drum.period, 12);
+  assert.equal(drum.duty, undefined);
 });
 
 console.log(`\n${passed} passed`);

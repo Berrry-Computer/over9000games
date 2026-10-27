@@ -8,7 +8,8 @@
  *       loop: true,          // default true
  *       tracks: [
  *         { channel: 'pulse1', notes: 'E5 E5 -:0.5 C5:0.5 E5 G5:2', volume: 0.2, envelope: 'soft' },
- *         { channel: 'triangle', notes: 'C3:2 G2:2' }
+ *         { channel: 'triangle', notes: 'C3:2 G2:2' },
+ *         { channel: 'noise', period: 12, notes: 'C4 C4' }   // voice options: duty, period, vol, arp, vibrato
  *       ]
  *     }
  *   }
@@ -24,6 +25,34 @@ const MAX_NOTES_PER_TRACK = 1024;
 
 // Fraction of a note's length that it sounds, so repeated notes are distinct
 const GATE = 0.9;
+
+const DUTIES = [0.125, 0.25, 0.5, 0.75];
+const MAX_MACRO_STEPS = 256;
+
+/**
+ * Check the NES-style voice options shared by sound effects and song tracks:
+ * duty, period, vol/arp macros, vibrato and sweep curve. Only present options are checked.
+ * @returns {string|null}
+ */
+export function checkVoice(def) {
+  if (def.duty !== undefined && !DUTIES.includes(def.duty)) return `duty must be one of ${DUTIES.join(', ')}, got ${JSON.stringify(def.duty)}`;
+  if (def.period !== undefined && !(Number.isInteger(def.period) && def.period >= 0 && def.period <= 15)) return `period must be an integer 0-15, got ${JSON.stringify(def.period)}`;
+  for (const key of ['vol', 'arp']) {
+    const values = def[key];
+    if (values === undefined) continue;
+    if (!Array.isArray(values) || values.length === 0 || values.length > MAX_MACRO_STEPS || !values.every(v => typeof v === 'number' && isFinite(v))) {
+      return `${key} must be an array of 1-${MAX_MACRO_STEPS} numbers (one per 1/60s step)`;
+    }
+  }
+  if (def.vol && def.vol.some(v => v < 0 || v > 1)) return 'vol values must be 0-1';
+  if (def.arp && def.arp.some(v => Math.abs(v) > 48)) return 'arp values are semitones, at most 48 up or down';
+  if (def.vibrato !== undefined && !(def.vibrato && typeof def.vibrato === 'object' && (def.vibrato.rate === undefined || def.vibrato.rate > 0))) return 'vibrato must be {rate: Hz, depth: semitones}';
+  if (def.sweep?.curve !== undefined && !['linear', 'exp'].includes(def.sweep.curve)) return `sweep.curve must be 'linear' or 'exp'`;
+  return null;
+}
+
+// Voice options a track passes on to every note it plays
+const VOICE_KEYS = ['duty', 'period', 'vol', 'arp', 'macroLoop', 'vibrato'];
 
 /**
  * Parse and validate a song definition
@@ -44,6 +73,8 @@ export function parseSong(song) {
     if (!track || typeof track !== 'object') return { error: `track ${t} must be an object` };
     if (!CHANNELS.includes(track.channel)) return { error: `track ${t} channel must be one of ${CHANNELS.join(', ')}` };
     if (typeof track.notes !== 'string') return { error: `track ${t} notes must be a string like "C4 E4:0.5 -:2"` };
+    const voiceError = checkVoice(track);
+    if (voiceError) return { error: `track ${t} ${voiceError}` };
 
     const notes = [];
     for (const token of track.notes.trim().split(/\s+/).filter(Boolean)) {
@@ -61,6 +92,7 @@ export function parseSong(song) {
       volume: typeof track.volume === 'number' ? Math.max(0, Math.min(1, track.volume)) : 0.2,
       envelope: track.envelope || 'soft',
       mode: track.mode,
+      voice: Object.fromEntries(VOICE_KEYS.filter(key => track[key] !== undefined).map(key => [key, track[key]])),
       notes
     });
   }
@@ -115,7 +147,7 @@ export class MusicPlayer {
 
   /**
    * Advance by dt seconds
-   * @returns {Array<{channel, note, duration, volume, envelope, mode}>} - Notes that start now
+   * @returns {Array<{channel, note, duration, volume, envelope, mode, ...voice}>} - Notes that start now
    */
   advance(dt) {
     if (!this.current) return [];
@@ -144,7 +176,8 @@ export class MusicPlayer {
             duration: length * GATE,
             volume: track.volume,
             envelope: track.envelope,
-            mode: track.mode
+            mode: track.mode,
+            ...track.voice
           });
         }
       }

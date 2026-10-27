@@ -201,7 +201,7 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **Tile System**: `resources().tilemap` is kept by the console and edited with `bg: [{x, y, tileId}]`; legacy `tiles[]` (128×16, cleared each frame) still works for old games but is no longer taught in the prompt
 - **Color Palette**: Maximum 16 colors per game (4-bit)
 - **Audio Slots**: 8 sound slots, 4 channels (pulse1, pulse2, triangle, noise)
-- **Audio Features**: Sound IDs prevent restart, envelope presets (sharp/soft/fade/sustain), noise modes (random/periodic)
+- **Audio Features**: Sound IDs prevent restart, envelope presets (sharp/soft/fade/sustain), pulse `duty`, noise `period` 0-15 and modes (random/periodic), per-frame `arp`/`vol` macros, `vibrato`, exponential sweeps, `loop`; songs take the same voice options per track. Noise without `period` keeps the old generator so older games sound the same
 - **QuickJS Sandbox**: No external dependencies, limited execution time
 - **State-Based Rendering**: Return state objects, no direct canvas access
 - **Camera System**: `scroll` moves sprites and the tilemap in both directions; `bgScroll` overrides the tilemap scroll; `textScroll` offsets the text layer

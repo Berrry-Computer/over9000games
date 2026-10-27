@@ -54,10 +54,15 @@ function getRequirementsSection() {
 - **Music**: every game should have background music. Declare songs in resources() and pick one with \`music: 'name'\` in update() (\`null\` = silence); the console sequences the notes
   - \`music: {main: {bpm: 140, loop: true, tracks: [{channel: 'pulse1', notes: "E5 E5 -:0.5 C5:0.5 G5:2", volume: 0.2, envelope: 'soft'}, ...]}}\` - up to 4 tracks
   - notes are space separated \`NOTE[:beats]\` (C4, F#3, Bb2; \`-\` = rest; beats default 1); typical: melody on pulse1, bass on triangle, drums on noise
+  - tracks take the sound effect voice options below (\`duty\`, \`period\`, \`vibrato\`, \`arp\`, \`vol\`), e.g. a 0.25 duty lead with light vibrato, or a noise drum track with \`period: 12\`
   - sending the same song name every frame keeps it playing; a new name switches songs (e.g. 'title', 'level', 'boss', a non-looping 'death' jingle)
 - **Sound effects**: \`sounds: [{slotId: 0-7, soundId, channel: 'pulse1'|'pulse2'|'triangle'|'noise', note: 'C4' or frequency: Hz, duration: seconds, volume: 0-1, envelope: 'sharp'|'soft'|'fade'|'sustain'}]\`
-  - Optional: \`sweep: {target: Hz, time: seconds}\` for pitch slides, \`mode: 'random'|'periodic'\` for noise
+  - Optional: \`sweep: {target: Hz, time: seconds, curve: 'linear'|'exp'}\` for pitch slides ('exp' sounds like NES), \`vibrato: {rate: Hz, depth: semitones}\`
+  - Pulse \`duty: 0.125|0.25|0.5|0.75\`: 0.125 and 0.25 are the thin, buzzy NES sound; 0.5 is a hollow square
+  - Noise \`period: 0-15\` sets the pitch (0 thin hiss for hi-hats/sparks, 8 crunch, 12-15 deep rumble for explosions); \`mode: 'periodic'\` turns noise into a metallic buzz
+  - Per-frame macros, one value per 1/60s that holds the last value (\`macroLoop: true\` repeats): \`arp: [0, 0, 0, 5]\` semitone offsets (two-note coin chimes, 1-up jingles, fast chord arpeggios), \`vol: [1, 0.7, 0.4, 0.2]\` volume steps (replaces the envelope)
   - Send an effect once when it happens; it plays for its duration. Sending the same soundId again keeps it playing, a new soundId restarts the slot, soundId: null stops it
+  - \`loop: true\` keeps a sound (engine hum, alarm) playing while you keep sending its soundId every frame; it stops the first frame you don't
 </requirements>`;
 }
 
