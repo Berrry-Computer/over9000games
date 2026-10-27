@@ -14,153 +14,153 @@ function metadata() {
 function resources() {
   return {
     sprites: [
-      // Sprite 0: Explorer head (standing/walk frame 0) - profile view with fedora hat
-      [
-        "00999990",
-        "09dddd90",
-        "9ddddd90",
-        "9dd0dd00",
-        "0dddd000",
-        "00d2d000",
-        "00ddd000",
-        "000d0000"
-      ],
-      // Sprite 1: Explorer body walk frame 1 - right leg forward, left leg back
-      [
-        "000d0000",
-        "00d9d000",
-        "0d9dd900",
-        "d99dd990",
-        "d9ddd990",
-        "0d9009d0",
-        "00dd09d0",
-        "009d0d00"
-      ],
-      // Sprite 2: Explorer body walk frame 2 - left leg forward, right leg back
-      [
-        "000d0000",
-        "00d9d000",
-        "0d9dd900",
-        "d99dd990",
-        "d9ddd990",
-        "0d9009d0",
-        "0d9d0d00",
-        "0d009d00"
-      ],
-      // Sprite 3: Scorpion front - claws and head connecting to body
-      [
-        "90000000",
-        "99000000",
-        "09900088",
-        "00998888",
-        "00988888",
-        "09900088",
-        "99000000",
-        "90000000"
-      ],
-      // Sprite 4: Scorpion back - body segments with tail curving upward
-      [
-        "00000009",
-        "00000990",
-        "88889800",
-        "88888000",
-        "88888000",
-        "88889000",
-        "88899000",
-        "88900000"
-      ],
-      // Sprite 5: Bat - wings spread, flying enemy
+      // Sprite 0: Explorer head facing right - brown fedora with band and brim, face in profile
       [
         "00000000",
+        "00999900",
+        "00888800",
+        "09999999",
+        "00dddd00",
+        "00dd8dd0",
+        "000ddd00",
+        "000ee000"
+      ],
+      // Sprite 1: Explorer body, standing / passing pose - khaki shirt, belt, dark trousers, boots
+      [
+        "00eeee00",
+        "0eeeeee0",
+        "0deeeed0",
+        "00999900",
+        "00888800",
+        "00888800",
+        "00880880",
+        "00990990"
+      ],
+      // Sprite 2: Explorer body, stride - legs apart, arm swinging forward
+      [
+        "00eeee00",
+        "0eeeeee0",
+        "00eeeeed",
+        "00999900",
+        "00888800",
+        "08800880",
+        "08800880",
+        "99000099"
+      ],
+      // Sprite 3: Scorpion tail half (left when facing right) - segmented tail curling over the back to a red stinger
+      [
+        "000eee00",
+        "00e000e2",
+        "00e00002",
+        "00e00000",
+        "000eeeee",
+        "0e9ee9ee",
+        "00909090",
+        "09090909"
+      ],
+      // Sprite 4: Scorpion head half (right when facing right) - body, white eye and open pincers
+      [
+        "00000000",
+        "00000000",
+        "000000ee",
+        "0000000e",
+        "eeeee1ee",
+        "9ee9eeee",
+        "909090e0",
+        "90909000"
+      ],
+      // Sprite 5: Bat, wings up - red eyes, gray body, brown wings
+      [
         "90000009",
-        "99800899",
-        "09988990",
-        "00988900",
-        "00088000",
+        "99000099",
+        "999cc999",
+        "09c22c90",
+        "009cc900",
+        "000cc000",
         "00000000",
         "00000000"
       ],
-      // Sprite 6: Weathered stone platform with cracks and shadows
+      // Sprite 6: Stone platform block - light top-left bevel, shadowed bottom edge, small crack
       [
-        "88017708",
-        "80777781",
-        "17888871",
-        "78811887",
-        "78811887",
-        "17888871",
-        "80777781",
+        "cccccccc",
+        "c7777778",
+        "c7777778",
+        "c7787778",
+        "c7788778",
+        "c7777778",
+        "c7777778",
         "88888888"
       ],
-      // Sprite 7: Bright golden coin like Mario - shiny yellow with white highlights
+      // Sprite 7: Gold coin, face on - bronze rim, white shine, stamped mark
       [
-        "00555500",
-        "05511550",
-        "51111115",
-        "51111115",
-        "51111115",
-        "51111115",
-        "05511550",
-        "00555500"
-      ],
-      // Sprite 8: Flaming torch projectile with orange/red fire
-      [
-        "00055000",
-        "00e5e500",
-        "0e5e5e50",
-        "0e52225e",
-        "0e52225e",
+        "00eeee00",
+        "0e5f55e0",
+        "e5f1555e",
+        "e5f5e55e",
+        "e555e55e",
+        "e55555ee",
         "0e5555e0",
-        "00e55e00",
-        "0005e000"
+        "00eeee00"
       ],
-      // Sprite 9: Weathered sandstone brick with dark mortar and cracks
+      // Sprite 8: Thrown torch - fireball with white-hot core
       [
-        "0cddddc0",
-        "ddd99ddd",
-        "dd9889dd",
-        "0cddddc0",
-        "dddd9ddd",
-        "dd9889dd",
-        "ddd99ddd",
-        "0cddddc0"
+        "00060000",
+        "006f6000",
+        "06ff6600",
+        "6ff1f660",
+        "6fff6f60",
+        "06ff6600",
+        "00666000",
+        "00000000"
       ],
-      // Sprite 10: Rusty metal platform with rivets and corrosion
+      // Sprite 9: Breakable sandstone brick - lighter than the wall so it stands out
       [
-        "08888880",
-        "87771778",
-        "77999977",
-        "71999917",
-        "71999917",
-        "77999977",
-        "87771778",
-        "08888880"
+        "ddddddd9",
+        "deeeeee9",
+        "deeeeee9",
+        "99999999",
+        "eee9deee",
+        "ee99eeee",
+        "eee9eeee",
+        "99999999"
       ],
-      // Sprite 11: Rusty metal spikes with dark shadows
+      // Sprite 10: Riveted metal plate with a spot of rust
       [
-        "00000000",
-        "00088000",
-        "00899800",
-        "08999980",
-        "89988998",
-        "88888888",
-        "88888888",
+        "cccccccc",
+        "c1777718",
+        "c7777778",
+        "c7779778",
+        "c7777778",
+        "c7777778",
+        "c1777718",
         "88888888"
       ],
-      // Sprite 12: Ancient wooden exit door with metal bands
-      [
-        "00999900",
-        "09d88d90",
-        "9d8dd8d9",
-        "d8dddd8d",
-        "d8dddd8d",
-        "9d8dd8d9",
-        "09d88d90",
-        "00999900"
-      ],
-      // Sprite 13: Heart - red health indicator
+      // Sprite 11: Metal floor spikes - two sharp points on a base
       [
         "00000000",
+        "00100010",
+        "00c000c0",
+        "0cc70cc7",
+        "0c770c77",
+        "c7778777",
+        "c7778777",
+        "88888888"
+      ],
+      // Sprite 12: Exit door - wooden planks with iron bands and a gold handle; stacks vertically
+      [
+        "c999999c",
+        "c9e9e9ec",
+        "c9e9e9ec",
+        "c888888c",
+        "c9e9e95c",
+        "c9e9e9ec",
+        "c888888c",
+        "c9e9e9ec"
+      ],
+      // Sprite 13: Heart - health indicator with a highlight
+      [
         "02200220",
+        "21222222",
         "22222222",
         "22222222",
         "02222220",
@@ -168,27 +168,27 @@ function resources() {
         "00022000",
         "00000000"
       ],
-      // Sprite 14: Explorer body hurt - recoiling/knocked back pose
+      // Sprite 14: Explorer body hurt - arms thrown up, legs splayed
       [
-        "000d0000",
-        "00d9d000",
-        "0d9dd900",
-        "d99dd990",
-        "d9ddd990",
-        "00d99d00",
-        "0d00d000",
-        "d000d000"
+        "d0eeee0d",
+        "deeeeeed",
+        "00eeee00",
+        "00999900",
+        "00888800",
+        "08800880",
+        "88000088",
+        "90000009"
       ],
-      // Sprite 15: Explorer body death - falling/collapsed pose
+      // Sprite 15: Explorer collapsed - lying on the floor, hat fallen off (drawn without the head)
       [
         "00000000",
         "00000000",
-        "ddd9ddd0",
-        "99ddd990",
-        "d99d9900",
-        "0d9009d0",
-        "00d00d00",
-        "00d00d00"
+        "00000000",
+        "00000000",
+        "00000000",
+        "09900000",
+        "99ddeee8",
+        "0ddee988"
       ],
       // Sprites 16-24: backdrop tiles. They are not solid; the console draws them behind everything
       // Sprite 16: Tomb wall - offset sandstone blocks, mortar shows the black background
@@ -289,6 +289,39 @@ function resources() {
         "0abbaa00",
         "aaaaaaa0",
         "00000000"
+      ],
+      // Sprite 25: Bat, wings down - second flap frame
+      [
+        "00000000",
+        "00c00c00",
+        "000cc000",
+        "00c22c00",
+        "09cccc90",
+        "99900999",
+        "99000099",
+        "90000009"
+      ],
+      // Sprite 26: Gold coin turning - narrower
+      [
+        "000ee000",
+        "00e5fe00",
+        "0e5f15e0",
+        "0e5f55e0",
+        "0e5555e0",
+        "0e555ee0",
+        "00e5ee00",
+        "000ee000"
+      ],
+      // Sprite 27: Gold coin edge-on - thinnest spin frame
+      [
+        "000ee000",
+        "000e5000",
+        "000ef000",
+        "000e5000",
+        "000e5000",
+        "000e5000",
+        "000e5000",
+        "000ee000"
       ]
     ],
     palette: [
@@ -304,7 +337,7 @@ function resources() {
       0x8B4513, // 9: Saddle brown
       0x1B2430, // a: Cave rock (cold blue-gray)
       0x5FC4E8, // b: Crystal cyan
-      0x696969, // c: Dim gray
+      0xA8A8A8, // c: Light gray (stone and metal highlights)
       0xD2B48C, // d: Tan
       0xCD853F, // e: Peru/bronze
       0xFFE36B  // f: Flame yellow
@@ -394,6 +427,20 @@ const SPRITE_SCORPION_FRONT = 3;
 const SPRITE_SCORPION_BACK = 4;
 const SPRITE_BAT = 5;
 const SPRITE_TREASURE = 7;
+const SPRITE_BAT_WINGS_DOWN = 25;
+const SPRITE_COIN_TURNING = 26;
+const SPRITE_COIN_EDGE = 27;
+
+// Animation frames, picked by time so every coin and bat animates without its own timer
+const COIN_SPIN = [SPRITE_TREASURE, SPRITE_COIN_TURNING, SPRITE_COIN_EDGE, SPRITE_COIN_TURNING];
+const COIN_FRAME_TIME = 0.12;
+const BAT_FLAP = [SPRITE_BAT, SPRITE_BAT_WINGS_DOWN];
+const BAT_FRAME_TIME = 0.15;
+
+// offset staggers objects so they don't all animate in lockstep
+function animFrame(frames, frameTime, offset) {
+  return frames[Math.floor(gameState.animTime / frameTime + offset) % frames.length];
+}
 const SPRITE_TORCH = 8;
 const SPRITE_HEART = 13;
 const SPRITE_EXPLORER_BODY_HURT = 14;   // Damage recoil pose
@@ -473,7 +520,7 @@ function backdropTile(x, y) {
     return hash % 5 === 0 ? TILE_WALL_CRACKED : TILE_WALL;
   }
   if (solid(x, y - 1) && (y === CAVERN_TOP_ROW + 2 || hash % 3 === 0)) return TILE_STALACTITE;
-  if (solid(x, y + 1) && !solid(x, y - 1) && hash % 4 === 0 && y > 20) return TILE_CRYSTAL;
+  if (solid(x, y + 1) && !solid(x, y - 1) && hash % 7 === 0 && y > 20) return TILE_CRYSTAL;
   return hash % 9 === 0 ? TILE_CAVE_SPECK : TILE_EMPTY;
 }
 
@@ -682,7 +729,8 @@ function update(deltaTime, input) {
       torchTimer: 0,
       torchFrame: 0,
       inCavern: false,
-      winTimer: 0
+      winTimer: 0,
+      animTime: 0 // seconds since start, drives sprite animation
     };
     // Initialize camera to player's starting position
     gameState.camera.x = Math.max(0, Math.min(gameState.player.x - 64, WORLD_WIDTH - SCREEN_WIDTH));
@@ -709,6 +757,7 @@ function update(deltaTime, input) {
     const tileId = gameState.torchFrame ? TILE_WALL_TORCH_2 : TILE_WALL_TORCH_1;
     for (const torch of WALL_TORCHES) gameState.bgEdits.push({ x: torch.x, y: torch.y, tileId });
   }
+  gameState.animTime += dt;
 
   // Title screen: wait for the player before starting the level
   if (!gameState.started) {
@@ -723,7 +772,7 @@ function update(deltaTime, input) {
       ],
       textBg: 0,
       bg: gameState.bgEdits.splice(0), // torches flicker behind the title too
-      sprites: [{ spriteId: SPRITE_TREASURE, x: 60, y: 56 }],
+      sprites: [{ spriteId: animFrame(COIN_SPIN, COIN_FRAME_TIME, 0), x: 60, y: 56 }],
       score: 0,
       gameOver: false
     };
@@ -1355,7 +1404,7 @@ function update(deltaTime, input) {
   for (const coin of gameState.coins) {
     if (!coin.collected) {
       sprites.push({
-        spriteId: SPRITE_TREASURE,
+        spriteId: animFrame(COIN_SPIN, COIN_FRAME_TIME, coin.x / 40),
         x: Math.floor(coin.x),
         y: Math.floor(coin.y)
       });
@@ -1456,7 +1505,7 @@ function update(deltaTime, input) {
     if (bat.health > 0) {
       const batFacingLeft = bat.vx < 0;
       sprites.push({
-        spriteId: SPRITE_BAT,
+        spriteId: animFrame(BAT_FLAP, BAT_FRAME_TIME, bat.phase),
         x: Math.floor(bat.x),
         y: Math.floor(bat.y),
         flipH: batFacingLeft

@@ -64,6 +64,25 @@ function resolveEnvelope(envelope) {
   return envelope || ENVELOPE_PRESETS.sharp;
 }
 
+/**
+ * Schedule attack/decay/sustain/release on a gain. Short sounds squeeze the
+ * stages to fit their duration, so they still reach full volume and fade cleanly
+ */
+function applyEnvelope(gain, now, duration, volume, envelope) {
+  const stages = envelope.attack + envelope.decay + envelope.release;
+  const fit = stages > duration ? duration / stages : 1;
+  const attack = envelope.attack * fit;
+  const decay = envelope.decay * fit;
+  const release = envelope.release * fit;
+  const sustainLevel = envelope.sustain * volume;
+
+  gain.setValueAtTime(0, now);
+  gain.linearRampToValueAtTime(volume, now + attack);
+  gain.linearRampToValueAtTime(sustainLevel, now + attack + decay);
+  gain.setValueAtTime(sustainLevel, now + duration - release);
+  gain.linearRampToValueAtTime(0, now + duration);
+}
+
 // ----------------------------------------------------------------------------
 // Channel Sound Generators
 // ----------------------------------------------------------------------------
@@ -81,6 +100,7 @@ function playPulseSound(ctx, soundDef, destination) {
   osc.frequency.value = freq;
 
   if (soundDef.sweep) {
+    osc.frequency.setValueAtTime(freq, now); // Safari ramps from the last event, not from .value
     const targetFreq = soundDef.sweep.target || noteToFrequency(soundDef.sweep.targetNote || 'A4');
     const sweepTime = soundDef.sweep.time || duration;
     osc.frequency.linearRampToValueAtTime(targetFreq, now + sweepTime);
@@ -89,16 +109,7 @@ function playPulseSound(ctx, soundDef, destination) {
   const gainNode = ctx.createGain();
   gainNode.gain.value = 0;
 
-  const attackTime = envelope.attack;
-  const decayTime = envelope.decay;
-  const sustainLevel = envelope.sustain * volume;
-  const releaseTime = envelope.release;
-
-  gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(volume, now + attackTime);
-  gainNode.gain.linearRampToValueAtTime(sustainLevel, now + attackTime + decayTime);
-  gainNode.gain.setValueAtTime(sustainLevel, now + duration - releaseTime);
-  gainNode.gain.linearRampToValueAtTime(0, now + duration);
+  applyEnvelope(gainNode.gain, now, duration, volume, envelope);
 
   osc.connect(gainNode);
   gainNode.connect(destination);
@@ -122,6 +133,7 @@ function playTriangleSound(ctx, soundDef, destination) {
   osc.frequency.value = freq;
 
   if (soundDef.sweep) {
+    osc.frequency.setValueAtTime(freq, now); // Safari ramps from the last event, not from .value
     const targetFreq = soundDef.sweep.target || noteToFrequency(soundDef.sweep.targetNote || 'A4');
     const sweepTime = soundDef.sweep.time || duration;
     osc.frequency.linearRampToValueAtTime(targetFreq, now + sweepTime);
@@ -130,16 +142,7 @@ function playTriangleSound(ctx, soundDef, destination) {
   const gainNode = ctx.createGain();
   gainNode.gain.value = 0;
 
-  const attackTime = envelope.attack;
-  const decayTime = envelope.decay;
-  const sustainLevel = envelope.sustain * volume;
-  const releaseTime = envelope.release;
-
-  gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(volume, now + attackTime);
-  gainNode.gain.linearRampToValueAtTime(sustainLevel, now + attackTime + decayTime);
-  gainNode.gain.setValueAtTime(sustainLevel, now + duration - releaseTime);
-  gainNode.gain.linearRampToValueAtTime(0, now + duration);
+  applyEnvelope(gainNode.gain, now, duration, volume, envelope);
 
   osc.connect(gainNode);
   gainNode.connect(destination);
@@ -182,16 +185,7 @@ function playNoiseSound(ctx, soundDef, destination) {
   const gainNode = ctx.createGain();
   gainNode.gain.value = 0;
 
-  const attackTime = envelope.attack;
-  const decayTime = envelope.decay;
-  const sustainLevel = envelope.sustain * volume;
-  const releaseTime = envelope.release;
-
-  gainNode.gain.setValueAtTime(0, now);
-  gainNode.gain.linearRampToValueAtTime(volume, now + attackTime);
-  gainNode.gain.linearRampToValueAtTime(sustainLevel, now + attackTime + decayTime);
-  gainNode.gain.setValueAtTime(sustainLevel, now + duration - releaseTime);
-  gainNode.gain.linearRampToValueAtTime(0, now + duration);
+  applyEnvelope(gainNode.gain, now, duration, volume, envelope);
 
   source.connect(gainNode);
   gainNode.connect(destination);
@@ -226,6 +220,20 @@ export class AudioManager {
     this.musicNodes = new Set(); // notes started by the music sequencer, outside the 8 slots
     this.muted = false;
     this.initialized = false;
+    this.unlocked = false;
+    this._listenForUnlock();
+  }
+
+  /**
+   * iOS only lets audio start from touchend/click/keydown (not touchstart), so
+   * retry on every such gesture anywhere on the page until the context runs
+   */
+  _listenForUnlock() {
+    if (typeof document === 'undefined') return;
+    const unlock = () => this.tryResume();
+    for (const type of ['touchend', 'click', 'keydown', 'pointerup']) {
+      document.addEventListener(type, unlock, { capture: true, passive: true });
+    }
   }
 
   async initialize() {
@@ -273,13 +281,36 @@ export class AudioManager {
       }
     }
 
-    // Resume synchronously if suspended
-    if (this.ctx.state === 'suspended') {
+    // iOS mutes Web Audio while the ringer switch is on silent unless the page asks for playback
+    if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+      try {
+        navigator.audioSession.type = 'playback';
+      } catch (e) {
+        // Older Safari: no audio session API
+      }
+    }
+
+    // Resume synchronously if not running: 'suspended' before a gesture, 'interrupted' in Safari
+    // after a call or backgrounding
+    if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') {
       this.ctx.resume().then(() => {
         console.log("Audio context resumed on user gesture");
       }).catch(err => {
         console.warn("Audio resume failed:", err);
       });
+    }
+
+    // Older iOS only unlocks output after a sound is started inside the gesture
+    if (!this.unlocked) {
+      try {
+        const source = this.ctx.createBufferSource();
+        source.buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+        source.connect(this.ctx.destination);
+        source.start(0);
+        this.unlocked = true;
+      } catch (e) {
+        // Try again on the next gesture
+      }
     }
   }
 
