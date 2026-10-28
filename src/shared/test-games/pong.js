@@ -2,6 +2,7 @@ function metadata() {
   return {
     title: "Pong NES",
     description: "A classic Pong game with two paddles and a ball",
+    memory: 1, // draws by writing console memory (OAM, TEXT, REGS) instead of returning sprites
     controls: [
       {key: "up", action: "move player 1 paddle up"},
       {key: "down", action: "move player 1 paddle down"},
@@ -95,7 +96,28 @@ const WIN_SCORE = 10;
 
 let gameState;
 
+// Drawing helpers over console memory. The console clears OAM and TEXT before every update().
+let spriteCount = 0;
+
+function spr(id, x, y, flags) {
+  if (spriteCount >= 64) return;
+  const i = spriteCount++ * 4;
+  OAM[i] = id;
+  OAM[i + 1] = Math.floor(x); // whole pixels
+  OAM[i + 2] = Math.floor(y);
+  OAM[i + 3] = flags || 0;
+}
+
+function print(x, y, str) {
+  str = String(str).toUpperCase();
+  for (let i = 0; i < str.length; i++) {
+    if (x + i >= 0 && x + i < 16 && y >= 0 && y < 16) TEXT[y * 16 + x + i] = 0x100 + str.charCodeAt(i);
+  }
+}
+
 function update(deltaTime, input) {
+  spriteCount = 0;
+
   // Initialize game state if needed
   if (!gameState) {
     gameState = {
@@ -116,24 +138,14 @@ function update(deltaTime, input) {
     if (input.aPressed) {
       gameState.started = true;
     }
-    return {
-      sprites: [],
-      text: [
-        { x: 4, y: 6, text: "PONG NES" },
-        { x: 4, y: 9, text: "PRESS A" }
-      ],
-      score: 0,
-      gameOver: false
-    };
+    print(4, 6, "PONG NES");
+    print(4, 9, "PRESS A");
+    return { score: 0, gameOver: false };
   }
 
   // Don't update if game is over
   if (gameState.gameOver) {
-    return {
-      sprites: [],
-      score: gameState.score,
-      gameOver: true
-    };
+    return { score: gameState.score, gameOver: true };
   }
 
   // Player 1 controls
@@ -251,60 +263,19 @@ function update(deltaTime, input) {
   }
 
 
-  // Return grouped commands
+  // Paddles: rounded top, two middle segments, rounded bottom
+  for (const paddle of [gameState.player1, gameState.player2]) {
+    spr(1, paddle.x, paddle.y);
+    spr(0, paddle.x, paddle.y + SPRITE_SIZE);
+    spr(0, paddle.x, paddle.y + SPRITE_SIZE * 2);
+    spr(2, paddle.x, paddle.y + SPRITE_SIZE * 3);
+  }
+  spr(3, gameState.ball.x, gameState.ball.y);
+
+  // HUD on the text layer (16x16 screen grid)
+  print(1, 0, "SCORE:" + gameState.score);
+
   return {
-    sprites: [
-      // Player 1 paddle (rounded)
-      {
-        spriteId: 1, // Top rounded
-        x: gameState.player1.x,
-        y: gameState.player1.y
-      },
-      {
-        spriteId: 0, // Middle square
-        x: gameState.player1.x,
-        y: gameState.player1.y + SPRITE_SIZE
-      },
-      {
-        spriteId: 0, // Middle square
-        x: gameState.player1.x,
-        y: gameState.player1.y + SPRITE_SIZE * 2
-      },
-      {
-        spriteId: 2, // Bottom rounded
-        x: gameState.player1.x,
-        y: gameState.player1.y + SPRITE_SIZE * 3
-      },
-      // Player 2 paddle (rounded)
-      {
-        spriteId: 1, // Top rounded
-        x: gameState.player2.x,
-        y: gameState.player2.y
-      },
-      {
-        spriteId: 0, // Middle square
-        x: gameState.player2.x,
-        y: gameState.player2.y + SPRITE_SIZE
-      },
-      {
-        spriteId: 0, // Middle square
-        x: gameState.player2.x,
-        y: gameState.player2.y + SPRITE_SIZE * 2
-      },
-      {
-        spriteId: 2, // Bottom rounded
-        x: gameState.player2.x,
-        y: gameState.player2.y + SPRITE_SIZE * 3
-      },
-      // Ball
-      {
-        spriteId: 3, // Round ball
-        x: gameState.ball.x,
-        y: gameState.ball.y
-      }
-    ],
-    // HUD on the text layer (16x16 screen grid)
-    text: [{ x: 1, y: 0, text: "SCORE:" + gameState.score }],
     music: 'main',
     score: gameState.score,
     gameOver: gameState.gameOver,

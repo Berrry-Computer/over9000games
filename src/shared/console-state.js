@@ -12,7 +12,7 @@
  *
  * Games that never declare a tilemap or send bg/text get exactly the old tiles[] + sprites behavior.
  */
-import { MAX_SPRITES, MAX_TILES_X, MAX_TILES_Y, getDefaultPalette } from "./game-runner-common.js";
+import { MAX_SPRITES, MAX_TILES_X, MAX_TILES_Y, getDefaultPalette, REG, OAM_FLIP_H, OAM_FLIP_V, MEMORY_BG_EDITS } from "./game-runner-common.js";
 import { BITMAP_FONT, FONT_TILE_BASE } from "./bitmap-font.js";
 import { checkMusic, checkVoice } from "./music.js";
 
@@ -144,6 +144,13 @@ export class ConsoleState {
     this.textScroll = { x: 0, y: 0 };
 
     this.warnedTilesWithTilemap = false;
+
+    // Reused by applyMemory so memory games allocate nothing per frame
+    this.memorySprites = [];
+    this.spritePool = Array.from({ length: MAX_SPRITES }, () => ({ spriteId: -1, x: 0, y: 0, flipH: false, flipV: false }));
+    this.memoryScroll = { x: 0, y: 0 };
+    this.memoryMapScroll = { x: 0, y: 0 };
+    this.memoryTextScroll = { x: 0, y: 0 };
   }
 
   /**
@@ -152,6 +159,10 @@ export class ConsoleState {
    */
   apply(commands) {
     if (!commands || typeof commands !== 'object') return;
+    if (commands.memory) {
+      this.applyMemory(commands.memory);
+      return;
+    }
 
     // Sprites, legacy tiles and text are cleared every frame
     this.sprites = [];
@@ -198,20 +209,8 @@ export class ConsoleState {
 
     // Tilemap edits persist until changed again
     if (this.tilemap && Array.isArray(commands.bg)) {
-      const { width, height, wrap, cells } = this.tilemap;
       for (const edit of commands.bg) {
-        if (!edit) continue;
-        let x = Math.floor(Number(edit.x));
-        let y = Math.floor(Number(edit.y));
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-        if (wrap) {
-          x = ((x % width) + width) % width;
-          y = ((y % height) + height) % height;
-        }
-        const tileId = Number(edit.tileId);
-        if (isIndex(x, width) && isIndex(y, height) && isIndex(tileId, 256)) {
-          cells[y * width + x] = tileId;
-        }
+        if (edit) this.editTilemap(Math.floor(Number(edit.x)), Math.floor(Number(edit.y)), Number(edit.tileId));
       }
     }
 
@@ -244,6 +243,64 @@ export class ConsoleState {
 
     if (commands.textScroll !== undefined) {
       this.textScroll = readScroll(commands.textScroll, this.textScroll);
+    }
+  }
+
+  editTilemap(x, y, tileId) {
+    if (!this.tilemap || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const { width, height, wrap, cells } = this.tilemap;
+    if (wrap) {
+      x = ((x % width) + width) % width;
+      y = ((y % height) + height) % height;
+    }
+    if (isIndex(x, width) && isIndex(y, height) && isIndex(tileId, 256)) {
+      cells[y * width + x] = tileId;
+    }
+  }
+
+  /**
+   * Apply one frame of console memory (games with metadata().memory). Values are already
+   * whole pixels; sprite objects come from a pool so a frame allocates nothing.
+   * @param {{words: Int16Array, offsets: Object<string, number>}} memory
+   */
+  applyMemory({ words, offsets }) {
+    const regs = offsets.REGS, oam = offsets.OAM, text = offsets.TEXT, bg = offsets.BG;
+
+    this.background = words[regs + REG.BG_COLOR];
+    this.scroll = this.memoryScroll;
+    this.scroll.x = words[regs + REG.CAM_X];
+    this.scroll.y = words[regs + REG.CAM_Y];
+    this.bgScroll = null;
+    if (words[regs + REG.MAP_SCROLL]) {
+      this.bgScroll = this.memoryMapScroll;
+      this.bgScroll.x = words[regs + REG.MAP_X];
+      this.bgScroll.y = words[regs + REG.MAP_Y];
+    }
+    this.textScroll = this.memoryTextScroll;
+    this.textScroll.x = words[regs + REG.TEXT_SCROLL_X];
+    this.textScroll.y = words[regs + REG.TEXT_SCROLL_Y];
+    this.textBg = words[regs + REG.TEXT_BG] >= 0 ? words[regs + REG.TEXT_BG] : null;
+
+    if (this.sprites === this.memorySprites) this.sprites.length = 0;
+    else this.sprites = this.memorySprites;
+    for (let i = 0; i < MAX_SPRITES; i++) {
+      const at = oam + i * 4;
+      if (words[at] < 0) continue;
+      const sprite = this.spritePool[i];
+      sprite.spriteId = words[at];
+      sprite.x = words[at + 1];
+      sprite.y = words[at + 2];
+      sprite.flipH = (words[at + 3] & OAM_FLIP_H) !== 0;
+      sprite.flipV = (words[at + 3] & OAM_FLIP_V) !== 0;
+      this.sprites.push(sprite);
+    }
+
+    this.tiles.fill(EMPTY);
+    for (let i = 0; i < TEXT_COLS * TEXT_ROWS; i++) this.text[i] = words[text + i];
+
+    const edits = Math.min(Math.max(words[regs + REG.BG_COUNT], 0), MEMORY_BG_EDITS);
+    for (let i = 0; i < edits; i++) {
+      this.editTilemap(words[bg + i * 3], words[bg + i * 3 + 1], words[bg + i * 3 + 2]);
     }
   }
 

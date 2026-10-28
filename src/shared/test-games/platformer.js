@@ -2,9 +2,10 @@ function metadata() {
   return {
     title: "Tomb Explorer",
     description: "Explore ancient ruins, collect treasure and reach the exit",
+    memory: 1, // draws by writing console memory (OAM, TEXT, BG, REGS) instead of returning sprites
     controls: [
       {key: "left/right arrows", action: "move explorer"},
-      {key: "up arrow or B", action: "jump"},
+      {key: "up arrow or B", action: "jump (land on scorpions to squash them)"},
       {key: "down arrow", action: "look down"},
       {key: "A button", action: "throw torch / start"}
     ]
@@ -363,6 +364,7 @@ const PLAYER_WIDTH = SPRITE_SIZE;
 const PLAYER_HEIGHT = 16; // 2 sprites tall
 const SCORPION_WIDTH = 16; // 2 sprites wide
 const SCORPION_HEIGHT = SPRITE_SIZE;
+const STOMP_BOUNCE = 140;        // upward speed after squashing a scorpion; hold jump to bounce higher
 const COIN_SIZE = SPRITE_SIZE;
 const PROJECTILE_SIZE = SPRITE_SIZE;
 
@@ -465,38 +467,73 @@ function updateEnemyDeaths(dt) {
 }
 
 // Scorpions, bats, falling defeated enemies and score popups
-function enemySprites() {
-  const sprites = [];
+function drawEnemies() {
   for (const enemy of gameState.enemies) {
     const dying = enemy.health <= 0;
     if (dying && !(enemy.dyingTime < ENEMY_DEATH_TIME)) continue;
-    const x = Math.floor(enemy.x);
-    const y = Math.floor(enemy.y);
     // Scorpions are 2 sprites wide: facing left swaps the halves and flips both
     const facingLeft = enemy.vx < 0;
     const [left, right] = facingLeft ? [SPRITE_SCORPION_BACK, SPRITE_SCORPION_FRONT] : [SPRITE_SCORPION_FRONT, SPRITE_SCORPION_BACK];
-    sprites.push({ spriteId: left, x, y, flipH: facingLeft, flipV: dying });
-    sprites.push({ spriteId: right, x: x + SPRITE_SIZE, y, flipH: facingLeft, flipV: dying });
+    const flags = (facingLeft ? OAM_FLIP_H : 0) | (dying ? OAM_FLIP_V : 0);
+    spr(left, enemy.x, enemy.y, flags);
+    spr(right, enemy.x + SPRITE_SIZE, enemy.y, flags);
   }
   for (const bat of gameState.bats) {
     const dying = bat.health <= 0;
     if (dying && !(bat.dyingTime < ENEMY_DEATH_TIME)) continue;
-    sprites.push({
-      // A defeated bat stops flapping and tumbles, flipping every 0.1s
-      spriteId: dying ? SPRITE_BAT : animFrame(BAT_FLAP, BAT_FRAME_TIME, bat.phase),
-      x: Math.floor(bat.x),
-      y: Math.floor(bat.y),
-      flipH: dying ? Math.floor(bat.dyingTime / 0.1) % 2 === 0 : bat.vx < 0,
-      flipV: dying
-    });
+    // A defeated bat stops flapping and tumbles, flipping every 0.1s
+    const flipH = dying ? Math.floor(bat.dyingTime / 0.1) % 2 === 0 : bat.vx < 0;
+    spr(dying ? SPRITE_BAT : animFrame(BAT_FLAP, BAT_FRAME_TIME, bat.phase), bat.x, bat.y,
+      (flipH ? OAM_FLIP_H : 0) | (dying ? OAM_FLIP_V : 0));
   }
   for (const popup of gameState.popups) {
-    const y = Math.floor(popup.y - POPUP_RISE * popup.time / POPUP_TIME);
+    const y = popup.y - POPUP_RISE * popup.time / POPUP_TIME;
     String(ENEMY_KILL_SCORE).split('').forEach((digit, i) => {
-      sprites.push({ spriteId: 0x100 + digit.charCodeAt(0), x: Math.floor(popup.x) + i * SPRITE_SIZE, y });
+      spr(0x100 + digit.charCodeAt(0), Math.floor(popup.x) + i * SPRITE_SIZE, y);
     });
   }
-  return sprites;
+}
+
+// The explorer: head over a body pose, both flipped to face left
+function drawExplorer(bodySprite, showHead) {
+  const flags = gameState.player.facing < 0 ? OAM_FLIP_H : 0;
+  if (showHead) spr(SPRITE_EXPLORER_HEAD, gameState.player.x, gameState.player.y, flags);
+  spr(bodySprite, gameState.player.x, gameState.player.y + SPRITE_SIZE, flags);
+}
+
+// Drawing helpers over console memory. The console clears OAM, TEXT and the BG edit count
+// before every update(); registers (camera, colors) keep their values.
+let spriteCount = 0;
+
+function spr(id, x, y, flags) {
+  if (spriteCount >= 64) return;
+  const i = spriteCount++ * 4;
+  OAM[i] = id;
+  OAM[i + 1] = Math.floor(x); // whole pixels, rounded down like the camera
+  OAM[i + 2] = Math.floor(y);
+  OAM[i + 3] = flags || 0;
+}
+
+function print(x, y, str) {
+  str = String(str).toUpperCase();
+  for (let i = 0; i < str.length; i++) {
+    if (x + i >= 0 && x + i < 16 && y >= 0 && y < 16) TEXT[y * 16 + x + i] = 0x100 + str.charCodeAt(i);
+  }
+}
+
+// Change one cell of the console's tilemap (stays until changed again)
+function tile(x, y, id) {
+  const n = REGS[REG_BG_COUNT];
+  if (n >= 256) return;
+  BG[n * 3] = x;
+  BG[n * 3 + 1] = y;
+  BG[n * 3 + 2] = id;
+  REGS[REG_BG_COUNT] = n + 1;
+}
+
+function cam(x, y) {
+  REGS[REG_CAM_X] = Math.floor(x);
+  REGS[REG_CAM_Y] = Math.floor(y);
 }
 
 function animFrame(frames, frameTime, offset) {
@@ -565,7 +602,10 @@ function parseLevelRow(row) {
 // Burning torches on the tomb wall; update() swaps their tiles to make the flames flicker
 const WALL_TORCHES = [4, 14, 26, 36, 46, 54].map(x => ({ x, y: 6 }));
 const TORCH_FLICKER_TIME = 0.18; // seconds per flame frame
-const CAVERN_TOP_ROW = 14;       // The upper floor and everything below it is the cavern
+const CAVERN_TOP_ROW = 14;
+const BAT_BOB_SPEED = 30;         // px/s of the bats' up/down wobble
+const STALACTITE_TIP = 6;          // lowest pixel row of the stalactite art
+const STALACTITE_KNOCKBACK = 60;   // downward speed after bumping one, px/s       // The upper floor and everything below it is the cavern
 
 // Which backdrop tile goes in an empty cell: carved tomb wall above, dark cave below
 function backdropTile(x, y) {
@@ -727,6 +767,9 @@ const WIN_PAUSE = 3.2;         // seconds of victory jingle before the game ends
 let gameState;
 
 function update(deltaTime, input) {
+  spriteCount = 0;
+  REGS[REG_TEXT_BG] = -1; // no backing behind text unless a screen asks for it
+
   // Initialize game state
   if (!gameState) {
     gameState = {
@@ -794,7 +837,6 @@ function update(deltaTime, input) {
         y: 0,
         targetX: 0  // Target camera position (where we want to be)
       },
-      bgEdits: [], // tilemap changes to send to the console this frame
       torchTimer: 0,
       torchFrame: 0,
       inCavern: false,
@@ -816,7 +858,7 @@ function update(deltaTime, input) {
     gameState.torchTimer = 0;
     gameState.torchFrame = 1 - gameState.torchFrame;
     const tileId = gameState.torchFrame ? TILE_WALL_TORCH_2 : TILE_WALL_TORCH_1;
-    for (const torch of WALL_TORCHES) gameState.bgEdits.push({ x: torch.x, y: torch.y, tileId });
+    for (const torch of WALL_TORCHES) tile(torch.x, torch.y, tileId);
   }
   gameState.animTime += dt;
   updateEnemyDeaths(dt);
@@ -827,17 +869,11 @@ function update(deltaTime, input) {
       gameState.started = true;
     }
     // Text layer over the level, with a black backing so it stays readable
-    return {
-      text: [
-        { x: 1, y: 5, text: "TOMB EXPLORER" },
-        { x: 4, y: 9, text: "PRESS A" }
-      ],
-      textBg: 0,
-      bg: gameState.bgEdits.splice(0), // torches flicker behind the title too
-      sprites: [{ spriteId: animFrame(COIN_SPIN, COIN_FRAME_TIME, 0), x: 60, y: 56 }],
-      score: 0,
-      gameOver: false
-    };
+    print(1, 5, "TOMB EXPLORER");
+    print(4, 9, "PRESS A");
+    REGS[REG_TEXT_BG] = 0;
+    spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, 0), 60, 56);
+    return { score: 0, gameOver: false };
   }
 
   // Handle death animation
@@ -894,62 +930,23 @@ function update(deltaTime, input) {
   // Check for game over or level complete
   if (gameState.gameOver || gameState.levelComplete) {
     // Stop game logic, just render current state (the console keeps drawing the tilemap)
-    const sprites = [];
-
-    // Render player and enemies even when game over (frozen state)
-    const facingLeft = gameState.player.facing < 0;
-    let bodySprite;
-    let shouldRenderHead = true;
-
-    // Show death pose if player died, otherwise normal pose
-    if (gameState.player.isDead) {
-      bodySprite = SPRITE_EXPLORER_BODY_DEATH;
-      shouldRenderHead = false; // Don't render head during death
-    } else {
-      bodySprite = gameState.player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2;
-    }
-
-    const playerRenderX = Math.floor(gameState.player.x);
-    const playerRenderY = Math.floor(gameState.player.y);
-
-    // Render head (unless dead)
-    if (shouldRenderHead) {
-      sprites.push({
-        spriteId: SPRITE_EXPLORER_HEAD,
-        x: playerRenderX,
-        y: playerRenderY,
-        flipH: facingLeft
-      });
-    }
-
-    // Render body
-    sprites.push({
-      spriteId: bodySprite,
-      x: playerRenderX,
-      y: playerRenderY + SPRITE_SIZE,
-      flipH: facingLeft
-    });
-
-    sprites.push(...enemySprites());
+    // Death pose has no head; otherwise the normal walk pose
+    if (gameState.player.isDead) drawExplorer(SPRITE_EXPLORER_BODY_DEATH, false);
+    else drawExplorer(gameState.player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2, true);
+    drawEnemies();
 
     // After reaching the exit, hold the scene while the fanfare plays, then end the game
-    const text = [];
     if (gameState.levelComplete) {
       gameState.winTimer -= dt;
       if (gameState.winTimer <= 0) gameState.gameOver = true;
-      text.push({ x: 2, y: 6, text: "LEVEL CLEAR!" });
+      print(2, 6, "LEVEL CLEAR!");
       const scoreLine = "SCORE " + gameState.score;
-      text.push({ x: Math.floor((16 - scoreLine.length) / 2), y: 8, text: scoreLine });
+      print(Math.floor((16 - scoreLine.length) / 2), 8, scoreLine);
+      REGS[REG_TEXT_BG] = 0;
     }
-    const bg = gameState.bgEdits;
-    gameState.bgEdits = [];
+    cam(gameState.camera.x, gameState.camera.y);
 
     return {
-      sprites,
-      bg,
-      text,
-      textBg: text.length ? 0 : undefined,
-      scroll: { x: Math.round(gameState.camera.x), y: Math.round(gameState.camera.y) },
       music: gameState.levelComplete ? 'win' : 'death',
       sounds,
       score: gameState.score,
@@ -1022,8 +1019,7 @@ function update(deltaTime, input) {
 
   // Helper function to check if a tile is solid
   function isSolidTile(tileId) {
-    // Spikes are solid so walking or jumping into them just bumps; only landing on top kills
-    return tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL || tileId === TILE_SPIKES;
+    return tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL;
   }
 
   // Helper function to get tile at position
@@ -1108,8 +1104,9 @@ function update(deltaTime, input) {
     for (let x = playerLeft; x <= playerRight; x += 4) {
       const tileId = getTileAt(x, bottomEdge);
 
-      // Landing on spikes is deadly
-      if (tileId === TILE_SPIKES && !gameState.player.isDead) {
+      // Spikes only hurt when your feet come down onto them from above; walking through them is safe
+      const feetWereAbove = gameState.player.y + PLAYER_HEIGHT <= Math.floor(bottomEdge / TILE_SIZE) * TILE_SIZE;
+      if (tileId === TILE_SPIKES && feetWereAbove && !gameState.player.isDead) {
         gameState.player.health = 0;
         gameState.player.isDead = true;
         gameState.player.deathTimer = 3.0;
@@ -1141,6 +1138,26 @@ function update(deltaTime, input) {
     const topEdge = newY;
     let hitCeiling = false;
 
+    // Jumping up into a cavern stalactite hurts like an enemy and knocks you back down
+    for (let x = playerLeft; x <= playerRight && !gameState.player.invincible; x += PLAYER_WIDTH - 1) {
+      const tileX = Math.floor(x / TILE_SIZE);
+      const tileY = Math.floor(topEdge / TILE_SIZE);
+      const tip = tileY * TILE_SIZE + STALACTITE_TIP;
+      if (getTileAt(x, topEdge) === TILE_EMPTY && backdropTile(tileX, tileY) === TILE_STALACTITE &&
+          gameState.player.y > tip && topEdge <= tip) {
+        gameState.player.health--;
+        gameState.player.invincible = true;
+        gameState.player.invincibleTimer = 1.5;
+        gameState.player.vy = STALACTITE_KNOCKBACK;
+        sounds.push(SFX.hurt);
+        if (gameState.player.health <= 0) {
+          gameState.player.isDead = true;
+          gameState.player.deathTimer = 3.0;
+          sounds.push(SFX.death);
+        }
+      }
+    }
+
     for (let x = playerLeft; x <= playerRight; x += 4) {
       const tileId = getTileAt(x, topEdge);
       if (isSolidTile(tileId)) {
@@ -1163,11 +1180,25 @@ function update(deltaTime, input) {
   // Check for scorpion collision (damage with invincibility) - skip if already dead
   if (!gameState.player.isDead) {
     for (const enemy of gameState.enemies) {
-      if (enemy.health > 0 && !gameState.player.invincible &&
-          gameState.player.x + PLAYER_WIDTH > enemy.x &&
+      if (enemy.health <= 0) continue;
+      const touching = gameState.player.x + PLAYER_WIDTH > enemy.x &&
           gameState.player.x < enemy.x + SCORPION_WIDTH &&
           gameState.player.y + PLAYER_HEIGHT > enemy.y &&
-          gameState.player.y < enemy.y + SCORPION_HEIGHT) {
+          gameState.player.y < enemy.y + SCORPION_HEIGHT;
+
+      // Coming down onto a scorpion's back squashes it and bounces you up (works while flashing too)
+      const feetBefore = gameState.player.y + PLAYER_HEIGHT - gameState.player.vy * dt;
+      if (touching && gameState.player.vy > 0 && feetBefore <= enemy.y + 3) {
+        enemy.health = 0;
+        gameState.score += ENEMY_KILL_SCORE;
+        sounds.push(SFX.enemyKill);
+        killEnemy(enemy, gameState.player.vx || 1);
+        gameState.player.vy = -STOMP_BOUNCE;
+        gameState.player.y = enemy.y - PLAYER_HEIGHT;
+        continue;
+      }
+
+      if (touching && !gameState.player.invincible) {
         gameState.player.health--;
         gameState.player.invincible = true;
         gameState.player.invincibleTimer = 1.5; // 1.5 seconds of invincibility
@@ -1325,7 +1356,7 @@ function update(deltaTime, input) {
 
     // Sine wave vertical movement
     bat.phase += dt * 3; // Control wave speed
-    bat.y = bat.y + Math.sin(bat.phase) * 0.5; // Subtle up/down oscillation
+    bat.y += Math.sin(bat.phase) * BAT_BOB_SPEED * dt; // Subtle up/down oscillation
 
     // Reverse direction at world bounds
     if (bat.x <= 0 || bat.x >= WORLD_WIDTH - SPRITE_SIZE) {
@@ -1351,7 +1382,7 @@ function update(deltaTime, input) {
     const hitTile = getTileAt(proj.x + PROJECTILE_SIZE / 2, proj.y + PROJECTILE_SIZE / 2);
     if (hitTile === TILE_BRICK) {
       gameState.tilemap[hitY][hitX] = TILE_EMPTY;
-      gameState.bgEdits.push({ x: hitX, y: hitY, tileId: backdropTile(hitX, hitY) });
+      tile(hitX, hitY, backdropTile(hitX, hitY));
       gameState.score += BRICK_SCORE;
       sounds.push(SFX.brick, SFX.brickThud); // crumble plus a low thump
       return false;
@@ -1404,80 +1435,25 @@ function update(deltaTime, input) {
     }
   }
 
-  // Build render commands (the console draws the tilemap itself)
-  const sprites = [];
-
-  // Render treasure
+  // Draw sprites (the console draws the tilemap itself)
   for (const coin of gameState.coins) {
-    if (!coin.collected) {
-      sprites.push({
-        spriteId: animFrame(COIN_SPIN, COIN_FRAME_TIME, coin.x / 40),
-        x: Math.floor(coin.x),
-        y: Math.floor(coin.y)
-      });
-    }
+    if (!coin.collected) spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, coin.x / 40), coin.x, coin.y);
   }
 
-  // Render explorer (2-sprite character with sprite flipping and animation)
-  const facingLeft = gameState.player.facing < 0;
-  let bodySprite;
-  let shouldRenderHead = true;
-  let spriteAlpha = 1.0;
-
-  // Determine which body sprite to use based on state (check death first!)
+  // Explorer pose: death overrides everything, then the hurt flash, then walking
   if (gameState.player.isDead) {
-    // Death animation overrides everything
-    bodySprite = SPRITE_EXPLORER_BODY_DEATH;
-    shouldRenderHead = false; // Don't render head during death
+    drawExplorer(SPRITE_EXPLORER_BODY_DEATH, false);
   } else if (gameState.player.invincible && gameState.player.invincibleTimer > 0 && gameState.player.health > 0) {
-    // Flashing during invincibility (only if still alive)
-    const flashSpeed = 10; // Flash rate
-    const shouldShow = Math.floor(gameState.player.invincibleTimer * flashSpeed) % 2 === 0;
-    if (!shouldShow) {
-      // Skip rendering during flash-off frames
-      bodySprite = null;
-    } else {
-      bodySprite = SPRITE_EXPLORER_BODY_HURT;
-    }
+    // Flash during invincibility: hidden on every other 0.1s step
+    if (Math.floor(gameState.player.invincibleTimer * 10) % 2 === 0) drawExplorer(SPRITE_EXPLORER_BODY_HURT, true);
   } else {
-    // Normal walking animation
-    bodySprite = gameState.player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2;
+    drawExplorer(gameState.player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2, true);
   }
 
-  // Round player position to integers for rendering
-  const playerRenderX = Math.floor(gameState.player.x);
-  const playerRenderY = Math.floor(gameState.player.y);
+  drawEnemies();
 
-  // Render head (unless dead)
-  if (shouldRenderHead && bodySprite !== null) {
-    sprites.push({
-      spriteId: SPRITE_EXPLORER_HEAD,
-      x: playerRenderX,
-      y: playerRenderY,
-      flipH: facingLeft
-    });
-  }
-
-  // Render body
-  if (bodySprite !== null) {
-    sprites.push({
-      spriteId: bodySprite,
-      x: playerRenderX,
-      y: playerRenderY + SPRITE_SIZE,
-      flipH: facingLeft
-    });
-  }
-
-  sprites.push(...enemySprites());
-
-  // Render torches
-  for (const proj of gameState.projectiles) {
-    sprites.push({
-      spriteId: SPRITE_TORCH,
-      x: Math.floor(proj.x),
-      y: Math.floor(proj.y)
-    });
-  }
+  // Thrown torches
+  for (const proj of gameState.projectiles) spr(SPRITE_TORCH, proj.x, proj.y);
 
   // Camera dead zone logic - only move camera when player approaches screen edges
   const playerScreenX = gameState.player.x - gameState.camera.x; // Player position relative to camera
@@ -1518,29 +1494,19 @@ function update(deltaTime, input) {
   gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH - SCREEN_WIDTH));
   gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT - SCREEN_HEIGHT));
 
-  // Round camera position to avoid subpixel jitter
-  const cameraScrollX = Math.round(gameState.camera.x);
-  const cameraScrollY = Math.round(gameState.camera.y);
+  // cam() rounds down like spr(), so a followed player stays on the same screen pixel
+  // (rounding the two differently makes the player wobble 1px against the level while scrolling)
+  cam(gameState.camera.x, gameState.camera.y);
 
   // Switch to the cavern theme once the player drops below the upper floor (sending a new name restarts music)
   if (gameState.player.y > UPPER_FLOOR_Y + TILE_SIZE * 2) gameState.inCavern = true;
 
   // HUD on the text layer: screen grid, doesn't scroll with the camera
-  const text = [];
-  for (let i = 0; i < gameState.player.health; i++) {
-    text.push({ x: i, y: 0, tileId: SPRITE_HEART });
-  }
+  for (let i = 0; i < gameState.player.health; i++) TEXT[i] = SPRITE_HEART; // row 0
   const scoreText = String(gameState.score);
-  text.push({ x: 16 - scoreText.length, y: 0, text: scoreText });
-
-  const bg = gameState.bgEdits;
-  gameState.bgEdits = [];
+  print(16 - scoreText.length, 0, scoreText);
 
   return {
-    sprites,
-    bg,
-    text,
-    scroll: { x: cameraScrollX, y: cameraScrollY },
     music: gameState.player.isDead ? 'death' : gameState.inCavern ? 'cavern' : 'main',
     score: gameState.score,
     gameOver: gameState.gameOver, // after the exit, the victory pause ends the game

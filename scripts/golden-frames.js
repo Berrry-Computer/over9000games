@@ -5,8 +5,8 @@
  * Runs each game with scripted input and renders every frame twice:
  *   1. the legacy reference below (a port of the original client processCommands/render code)
  *   2. the shared ConsoleState + ConsoleRenderer used by the client and server today
- * and fails if any pixel differs. Games that use the newer layers (tilemap, text, bg edits)
- * can't be drawn by the legacy console, so they are marked NEW and only checked by digest:
+ * and fails if any pixel differs. Games that use the newer layers (tilemap, text, bg edits,
+ * console memory) can't be drawn by the legacy console, so they are marked NEW and only checked by digest:
  * --record/--check compare a digest of all frames per game against a JSON file.
  *
  *   node scripts/golden-frames.js src/shared/test-games/*.js
@@ -176,7 +176,7 @@ async function runGame(runtime, QuickJS, file) {
     vm.unwrapResult(vm.evalCode(PRELUDE)).dispose();
     const loaded = executor.loadGameCode(fs.readFileSync(file, 'utf8'));
     updateHandle = loaded.updateHandle;
-    result.usesNewLayers = loaded.resources.tilemap !== undefined;
+    result.usesNewLayers = loaded.resources.tilemap !== undefined || loaded.metadata?.memory !== undefined;
 
     const legacy = new LegacyConsole(loaded.resources);
     const state = new ConsoleState(loaded.resources);

@@ -8,6 +8,8 @@ import { ConsoleState, checkTilemap, checkConsoleResources, checkCommands } from
 import { ConsoleRenderer } from '../src/shared/console-renderer.js';
 import { readFileSync } from 'fs';
 import { MusicPlayer, parseSong, checkVoice, DRUMS } from '../src/shared/music.js';
+import { HeadlessGameRunner } from '../src/server/headless-game-runner.js';
+import { QuickJSGameExecutor, readMemoryLayout, MEMORY_MAGIC, MEMORY_VERSION } from '../src/shared/game-runner-common.js';
 
 const SOLID = (digit) => Array(8).fill(digit.repeat(8));
 const sprites = [SOLID('0'), SOLID('1'), SOLID('2'), SOLID('3')];
@@ -171,6 +173,81 @@ test('sample game songs keep looping tracks in step', () => {
     const lengths = song.tracks.map(t => t.notes.reduce((sum, n) => sum + n.beats, 0));
     assert.ok(lengths.every(l => l === lengths[0]), `${name} track lengths ${lengths}`);
   }
+});
+
+const runner = new HeadlessGameRunner();
+await runner.initialize();
+
+// Load a game in a fresh context and run `frames` updates through the console
+function runGame(code, frames = 1) {
+  const vm = runner.QuickJS.newContext();
+  const executor = new QuickJSGameExecutor(vm, runner.QuickJS);
+  const { resources, updateHandle } = executor.loadGameCode(code);
+  const state = new ConsoleState({ sprites, palette, ...resources });
+  const renderer = new ConsoleRenderer();
+  renderer.loadResources(sprites, palette);
+  let commands;
+  for (let i = 0; i < frames; i++) state.apply(commands = executor.callUpdate(updateHandle, 1 / 60, {}));
+  renderer.render(state);
+  return { state, commands, px: (x, y) => renderer.frame[y * 128 + x] };
+}
+
+const MEMORY_GAME = `
+let frame = 0;
+function metadata() { return { title: 'mem', memory: 1 }; }
+function resources() { return { tilemap: { rows: ['0000', '0000'] } }; }
+function update(dt) {
+  frame++;
+  REGS[REG_BG_COLOR] = 3;
+  if (frame === 1) {
+    OAM[0] = 1; OAM[1] = 10.9; OAM[2] = 4; OAM[3] = OAM_FLIP_H; // 10.9 is stored as 10
+    TEXT[16] = 0x100 + 65;                                      // 'A' at text cell (0, 1)
+    BG[0] = 1; BG[1] = 0; BG[2] = 2; REGS[REG_BG_COUNT] = 1;   // tile 2 at map (1, 0)
+  }
+  return { score: frame };
+}`;
+
+test('memory games draw from console memory', () => {
+  const { state, commands, px } = runGame(MEMORY_GAME);
+  assert.equal(commands.score, 1);
+  assert.equal(state.sprites.length, 1);
+  assert.deepEqual({ ...state.sprites[0] }, { spriteId: 1, x: 10, y: 4, flipH: true, flipV: false });
+  assert.equal(px(10, 4), WHITE);
+  assert.equal(px(0, 0), GREEN);  // background color register
+  assert.equal(px(8, 0), RED);    // tilemap edit
+  assert.equal(state.text[16], 0x141);
+});
+
+test('memory: sprites, text and edits clear each frame, registers and the map stay', () => {
+  const { state, px } = runGame(MEMORY_GAME, 2);
+  assert.equal(state.sprites.length, 0);
+  assert.equal(state.text[16], -1);
+  assert.equal(state.background, 3);
+  assert.equal(px(8, 0), RED);
+});
+
+test('memory: old games may use the same names and keep the JSON path', () => {
+  const { commands, px } = runGame(`
+    const OAM = 'mine'; let REGS = 0; function TEXT() {}
+    function metadata() { return { title: 'old' }; }
+    function resources() { return {}; }
+    function update() { return { sprites: [{ spriteId: 1, x: 2.4, y: 0 }], background: 2 }; }`);
+  assert.equal(commands.memory, undefined);
+  assert.equal(px(2, 0), WHITE);
+  assert.equal(px(20, 20), RED);
+  assert.throws(() => runGame(MEMORY_GAME.replace('memory: 1', 'memory: 7')), /memory must be 1/);
+});
+
+test('memory layout is found through the region table', () => {
+  const words = new Int16Array(64);
+  const regions = [[9, 20, 4], [1, 24, 16], [2, 0, 0], [3, 0, 0], [4, 0, 0]]; // 9: unknown, skipped
+  words.set([MEMORY_MAGIC, MEMORY_VERSION, regions.length, ...regions.flat()]);
+  assert.match(readMemoryLayout(words), /region OAM is too small/);
+  const big = new Int16Array(4096);
+  big.set([MEMORY_MAGIC, MEMORY_VERSION, 5, 9, 16, 4, 1, 20, 16, 2, 36, 300, 3, 336, 256, 4, 592, 768]);
+  assert.deepEqual(readMemoryLayout(big), { REGS: 20, OAM: 36, TEXT: 336, BG: 592 }); // longer OAM is fine
+  big[1] = MEMORY_VERSION + 1;
+  assert.match(readMemoryLayout(big), /version/);
 });
 
 console.log(`\n${passed} passed`);

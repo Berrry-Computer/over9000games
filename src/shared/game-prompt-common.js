@@ -31,19 +31,22 @@ function getRequirementsSection() {
 - **Hex format**: Each character (0-F) represents the palette index for that pixel
 - **Color options**: Use palette indices 0-15, where 0 is typically transparent/background
 - **update(deltaTime, input)**: called every frame; deltaTime is in SECONDS (~0.0167). Time everything with deltaTime, never Date.now()
-- **update() returns**: \`{sprites, text, bg, scroll, bgScroll, background, music, sounds, score, gameOver}\` - all optional except sprites
+- **Drawing: console memory**: put \`memory: 1\` in metadata() and draw by writing these global Int16Arrays inside update() (whole numbers; fractions are dropped, so Math.floor positions yourself or use the helpers)
+  - \`OAM\`: 64 sprites x 4 values \`[spriteId, x, y, flags]\`; flags \`OAM_FLIP_H | OAM_FLIP_V\`; spriteId -1 = hidden; x/y are world pixels (screen = world - camera); later sprites draw on top; palette index 0 is transparent
+  - \`TEXT\`: 16x16 screen grid, \`TEXT[y * 16 + x]\` = tile id (font letters are \`0x100 + char code\`, any sprite id works for hearts/icons), -1 = empty; it does not move with the camera
+  - \`BG\`: tilemap edits \`[x, y, tileId]\` per edit, with the count in \`REGS[REG_BG_COUNT]\`; edited tiles stay changed (tileId 0 clears)
+  - \`REGS\` registers keep their value until you change them: \`REGS[REG_CAM_X]\`, \`REGS[REG_CAM_Y]\` camera; \`REGS[REG_BG_COLOR]\` palette index behind everything; \`REGS[REG_TEXT_BG]\` solid backing behind text cells (-1 = none); \`REGS[REG_MAP_SCROLL] = 1\` with \`REG_MAP_X\`/\`REG_MAP_Y\` only if the tilemap should scroll differently from the sprites
+  - The console clears OAM, TEXT and the BG count before every update(), so draw everything each frame
+  - Copy the helpers from the examples: \`spr(id, x, y, flags)\`, \`print(x, y, "SCORE 120")\`, \`tile(x, y, id)\`, \`cam(x, y)\`, and reset \`spriteCount = 0\` at the start of update()
+- **update() returns**: \`{score, gameOver, music, sounds}\` - drawing goes through console memory, not the return value
 - **Screen**: 128x128 pixels (16x16 cells of 8x8). Draw order, back to front: background color, tilemap, sprites, text
-- **Sprites**: up to 64 per frame, \`{spriteId, x, y, flipH, flipV}\`; x/y are world pixels (screen = world - scroll); palette index 0 is transparent
 - **Tilemap (levels, mazes, boards)**: declare it once in resources() and the console keeps drawing it every frame
   - \`tilemap: {width, height, wrap, rows}\` - up to 256x256 tiles; rows is an array of strings with 2 hex chars per tile (\`"00"\` = empty, otherwise a sprite id 1-255)
   - Keep the rows in a module-level const so the game can use the same data for collisions (see platformer example)
-  - Change tiles with \`bg: [{x, y, tileId}]\` (tile coordinates, tileId 0 clears) - send only the tiles that changed this frame, they stay changed
+  - Change tiles with \`tile(x, y, tileId)\` (tile coordinates) - only the tiles that changed this frame, up to 256 per frame
   - \`wrap: true\` repeats the map endlessly in both directions (endless runners, looping backgrounds)
-- **Camera**: \`scroll: {x, y}\` in pixels moves the view over the world (sprites and tilemap); levels can scroll horizontally AND vertically. Use \`bgScroll: {x, y}\` only if the tilemap should scroll differently from the sprites
-- **Text layer (HUD, titles, messages)**: \`text: [{x, y, text: "SCORE 120"}]\` on the 16x16 screen grid; it does not move with scroll, cleared every frame
-  - Only A-Z, 0-9 and these symbols: ! # % ( ) * + , - . / : ; < = > ? [ ] (other characters show as blanks); drawn in palette color 1, so keep palette[1] bright (e.g. white)
-  - \`{x, y, tileId}\` puts any sprite (hearts, icons) on the grid; \`textBg: <palette index>\` gives text cells a solid backing so they stay readable over the level
-- **Background**: \`background: <palette index>\` fills the screen behind everything
+- **Camera**: \`cam(x, y)\` in pixels moves the view over the world (sprites and tilemap); levels can scroll horizontally AND vertically
+- **Text**: only A-Z, 0-9 and these symbols: ! # % ( ) * + , - . / : ; < = > ? [ ] (others show as blanks; print() uppercases); drawn in palette color 1, so keep palette[1] bright (e.g. white)
 - **Input**: held state in input.up, input.down, input.left, input.right, input.a, input.b; just-pressed-this-frame in input.upPressed, input.downPressed, input.leftPressed, input.rightPressed, input.aPressed, input.bPressed (use these for shooting, menus, rotating pieces)
 - **Start**: the game must not end before the player has pressed anything - e.g. show a title with "PRESS A" and start on input.aPressed (see examples)
 - **Scoring**: Always include a score system - return current score as a number in update()
@@ -106,6 +109,7 @@ ${previousGame.gameCode}
 Edit the existing game based on this request: "${editDescription}"
 
 Keep the same basic structure and game mechanics unless specifically asked to change them.
+If the game has no \`memory: 1\` in metadata() it draws by returning sprites/text/bg/scroll from update(): convert ALL of its drawing to console memory and add \`memory: 1\` (a game with memory: 1 ignores returned sprites/text/bg/scroll).
 Return the complete modified game code, not just the changes.
 </task>
 `;

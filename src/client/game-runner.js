@@ -6,6 +6,7 @@ import { QuickJSGameExecutor, getDefaultPalette } from "../shared/game-runner-co
 import { ConsoleState } from "../shared/console-state.js";
 import { ConsoleRenderer } from "../shared/console-renderer.js";
 import { MusicPlayer } from "../shared/music.js";
+import { FrameStats } from "./frame-stats.js";
 
 // Unified game state enum
 const GameState = {
@@ -40,6 +41,11 @@ export class GameRunner {
 
     this.music = new MusicPlayer();
     this.lastDeltaTime = 0;
+    this.frameStats = new FrameStats();
+    this.frameStats.audioLatency = () => {
+      const ctx = this.audioManager?.ctx;
+      return ctx ? (ctx.baseLatency || 0) + (ctx.outputLatency || 0) : null;
+    };
 
     this.leaderboardLoading = false;
     this.loadingAnimationFrame = 0;
@@ -552,12 +558,21 @@ export class GameRunner {
     // Only continue loop if game is running or paused (stops completely when stopped or game over without loop)
     if (this.state.gameState === GameState.STOPPED) return;
 
+    const stats = this.frameStats;
+    stats.beginFrame();
+
     // Only update game logic when running
     if (this.state.gameState === GameState.RUNNING) {
       try {
+        stats.begin();
         const commands = this.executeGameUpdate();
+        stats.end('update');
+        stats.begin();
         this.processCommands(commands);
+        stats.end('commands');
+        stats.begin();
         this.advanceMusic();
+        stats.end('music');
       } catch (error) {
         console.error("Game update error:", error);
         this.stopGame({ message: "Game crashed: " + error.message, title: "Error" });
@@ -571,24 +586,26 @@ export class GameRunner {
     }
 
     // Always render (shows game, paused overlay, or game over overlay)
-    const renderStart = performance.now();
+    stats.begin();
     this.render();
-    const renderTime = performance.now() - renderStart;
+    stats.end('render');
+    stats.endFrame();
 
     // Update debug panel state (throttled to avoid performance impact)
     if (this.debugPanel && this.frameCount % 10 === 0) {
       const { spriteCount, tileCount } = this.console.getStats();
+      const perf = stats.summary();
 
       this.debugPanel.updateState({
         score: this.state.score,
         gameOver: this.state.gameState === GameState.GAME_OVER,
         frame: this.frameCount,
-        fps: this.lastFrameTime ? 1000 / ((performance.now() - this.lastFrameTime) * 10) : 60,
+        fps: perf.fps,
         spriteCount,
         tileCount,
         scrollX: this.console.scroll.x,
         scrollY: this.console.scroll.y,
-        renderTime
+        renderTime: perf.render.avg
       });
     }
 
