@@ -323,6 +323,28 @@ function resources() {
         "000e5000",
         "000e5000",
         "000ee000"
+      ],
+      // Sprite 28: Explorer body, throw wind-up - arm drawn back over the shoulder (the torch is drawn in the hand)
+      [
+        "d0eeee00",
+        "deeeeee0",
+        "0eeeeed0",
+        "00999900",
+        "00888800",
+        "00888800",
+        "08800880",
+        "09900990"
+      ],
+      // Sprite 29: Explorer body, throw release - arm flung forward at shoulder height, lunging step
+      [
+        "00eeee00",
+        "0eeeeedd",
+        "0deeee00",
+        "00999900",
+        "00888800",
+        "08800880",
+        "08800088",
+        "99000009"
       ]
     ],
     palette: [
@@ -395,7 +417,7 @@ const CAMERA_DEAD_ZONE_LEFT = 40;  // Pixels from left edge of screen before cam
 const CAMERA_DEAD_ZONE_RIGHT = 40; // Pixels from right edge of screen before camera moves right
 // Vertical camera: rests on the last ground the player stood on, leads downward when dropping
 const CAMERA_GROUND_MARGIN = 40;   // Space kept below the ground the player stands on
-const CAMERA_FALL_LOOKAHEAD = 32;  // While dropping, aim to keep the player this far from the top
+const CAMERA_FALL_CATCHUP = 60;    // While dropping, px/s the camera gains on the player beyond keeping pace
 const CAMERA_LOOK_DOWN = 24;       // Holding down puts the player this far from the top
 const CAMERA_SMOOTHING = 10;       // How quickly the camera catches up (per second)
 const CAMERA_EDGE = 16;            // The player is never closer than this to the top/bottom edge
@@ -403,6 +425,12 @@ const UPPER_FLOOR_Y = 112;         // The upper level fits the screen exactly ab
 
 // Game limits
 const MAX_PROJECTILES = 3;
+const THROW_WINDUP = 0.08;   // seconds with the arm drawn back before the torch leaves the hand
+const THROW_FOLLOW = 0.16;   // seconds the arm stays forward after the release
+const THROW_HAND_X = 6;      // torch starts at the hand: this far in front of the explorer
+const THROW_HAND_Y = 6;
+const THROW_WINDUP_X = -5;   // during the wind-up the torch is held behind the shoulder
+const THROW_WINDUP_Y = 2;
 
 // Scoring
 const ENEMY_KILL_SCORE = 100;
@@ -543,6 +571,8 @@ const SPRITE_TORCH = 8;
 const SPRITE_HEART = 13;
 const SPRITE_EXPLORER_BODY_HURT = 14;   // Damage recoil pose
 const SPRITE_EXPLORER_BODY_DEATH = 15;  // Death/collapsed pose
+const SPRITE_EXPLORER_BODY_WINDUP = 28; // Throw: arm back holding the flame
+const SPRITE_EXPLORER_BODY_THROW = 29;  // Throw: arm forward after the release
 
 // Backdrop tiles: drawn in the tilemap's empty cells, never solid
 const TILE_WALL = 16;
@@ -982,19 +1012,29 @@ function update(deltaTime, input) {
       sounds.push(SFX.jump); // rising sweep
     }
 
-    // Attack (using A button)
-    if (input.aPressed && gameState.projectiles.length < MAX_PROJECTILES) {
-      gameState.projectiles.push({
-        x: gameState.player.x + (gameState.player.facing > 0 ? SPRITE_SIZE : -SPRITE_SIZE),
-        y: gameState.player.y + 4,
-        vx: gameState.player.facing * PROJECTILE_SPEED,
-        life: PROJECTILE_LIFETIME
-      });
-      sounds.push(SFX.throwTorch);
+    // Attack (A button): wind up, then the torch leaves the hand, then follow through
+    if (input.aPressed && player.throwTime === undefined && gameState.projectiles.length < MAX_PROJECTILES) {
+      player.throwTime = 0;
+      player.thrown = false;
+    }
+    if (player.throwTime !== undefined) {
+      player.throwTime += dt;
+      if (!player.thrown && player.throwTime >= THROW_WINDUP) {
+        player.thrown = true;
+        gameState.projectiles.push({
+          x: player.x + player.facing * THROW_HAND_X,
+          y: player.y + THROW_HAND_Y,
+          vx: player.facing * PROJECTILE_SPEED,
+          life: PROJECTILE_LIFETIME
+        });
+        sounds.push(SFX.throwTorch);
+      }
+      if (player.throwTime >= THROW_WINDUP + THROW_FOLLOW) player.throwTime = undefined;
     }
   } else {
-    // During death, stop horizontal movement
+    // During death, stop horizontal movement (and drop an unfinished throw)
     gameState.player.vx = 0;
+    gameState.player.throwTime = undefined;
   }
 
   // Apply gravity to player (skip if dead - already handled in death animation).
@@ -1446,6 +1486,11 @@ function update(deltaTime, input) {
   } else if (gameState.player.invincible && gameState.player.invincibleTimer > 0 && gameState.player.health > 0) {
     // Flash during invincibility: hidden on every other 0.1s step
     if (Math.floor(gameState.player.invincibleTimer * 10) % 2 === 0) drawExplorer(SPRITE_EXPLORER_BODY_HURT, true);
+  } else if (gameState.player.throwTime !== undefined) {
+    const player = gameState.player;
+    // Wind-up: the torch held back behind the shoulder, drawn first so the explorer covers it
+    if (!player.thrown) spr(SPRITE_TORCH, player.x + player.facing * THROW_WINDUP_X, player.y + THROW_WINDUP_Y, player.facing < 0 ? OAM_FLIP_H : 0);
+    drawExplorer(player.thrown ? SPRITE_EXPLORER_BODY_THROW : SPRITE_EXPLORER_BODY_WINDUP, true);
   } else {
     drawExplorer(gameState.player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2, true);
   }
@@ -1472,12 +1517,17 @@ function update(deltaTime, input) {
   if (player.onGround || player.groundY === undefined) player.groundY = player.y;
   let targetY;
   if (!player.onGround && player.vy > 0 && player.y > player.groundY + 4) {
-    // Dropping below the last ledge: lead downward so the landing spot is visible
-    targetY = player.y - CAMERA_FALL_LOOKAHEAD;
+    // Dropping below the last ledge: keep pace with the fall and slowly bring the player up to
+    // where they will stand after landing, so the landing spot comes into view without a lurch
+    // when the fall starts or a bounce back when it ends
+    let fallY = player.y + PLAYER_HEIGHT + CAMERA_GROUND_MARGIN - SCREEN_HEIGHT;
     // ...unless the upper floor is right below, which is already on screen
     const column = Math.floor((player.x + PLAYER_WIDTH / 2) / TILE_SIZE);
     const floorBelow = gameState.tilemap[UPPER_FLOOR_Y / TILE_SIZE][column] !== TILE_EMPTY;
-    if (player.y + PLAYER_HEIGHT <= UPPER_FLOOR_Y && floorBelow) targetY = Math.min(targetY, 0);
+    if (player.y + PLAYER_HEIGHT <= UPPER_FLOOR_Y && floorBelow) fallY = Math.min(fallY, 0);
+    const maxStep = player.vy * dt + CAMERA_FALL_CATCHUP * dt;
+    if (fallY > gameState.camera.y) gameState.camera.y += Math.min(fallY - gameState.camera.y, maxStep);
+    targetY = gameState.camera.y;
   } else if (player.onGround && input.down && !player.isDead) {
     targetY = player.y - CAMERA_LOOK_DOWN;
   } else {
