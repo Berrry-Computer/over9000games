@@ -36,7 +36,9 @@ function getRequirementsSection() {
   - \`TEXT\`: 16x16 screen grid, \`TEXT[y * 16 + x]\` = tile id (font letters are \`0x100 + char code\`, any sprite id works for hearts/icons), -1 = empty; it does not move with the camera
   - \`BG\`: tilemap edits \`[x, y, tileId]\` per edit, with the count in \`REGS[REG_BG_COUNT]\`; edited tiles stay changed (tileId 0 clears)
   - \`REGS\` registers keep their value until you change them: \`REGS[REG_CAM_X]\`, \`REGS[REG_CAM_Y]\` camera; \`REGS[REG_BG_COLOR]\` palette index behind everything; \`REGS[REG_TEXT_BG]\` solid backing behind text cells (-1 = none); \`REGS[REG_MAP_SCROLL] = 1\` with \`REG_MAP_X\`/\`REG_MAP_Y\` only if the tilemap should scroll differently from the sprites
-  - The console clears OAM, TEXT and the BG count before every update(), so draw everything each frame
+  - \`PAL\`: one entry per palette index; \`PAL[i] = rgb(0xRRGGBB)\` shows another color for index i everywhere (sprites, tilemap, text, background) until set back to -1 (the resources() color). Use it for fades between screens (darken all 16), hit and score flashes, color cycling (water, lava, glowing crystals) and recoloring whole areas; copy \`rgb()\` and \`fadePalette()\` from the examples
+  - \`LINE_SCROLL\`: 128 screen lines x \`[dx, dy]\`, added to the tilemap scroll on that line only (sprites and text don't move). Parallax: scroll the sky lines slower, e.g. \`LINE_SCROLL[line * 2] = Math.floor(camX / 2) - camX\` for lines showing background rows that hold no platforms; ripples and wavy water: small sine offsets. Set lines back to 0 when the effect ends
+  - The console clears OAM, TEXT and the BG count before every update(), so draw everything each frame; REGS, PAL and LINE_SCROLL keep their values
   - Copy the helpers from the examples: \`spr(id, x, y, flags)\`, \`print(x, y, "SCORE 120")\`, \`tile(x, y, id)\`, \`cam(x, y)\`, and reset \`spriteCount = 0\` at the start of update()
   - Objects made of several sprites (tall paddles, 2-sprite characters): Math.floor the position ONCE and add the 8px offsets to that, otherwise the pieces can come apart by a pixel
 - **update() returns**: \`{score, gameOver, music, sounds}\` - drawing goes through console memory, not the return value
@@ -49,6 +51,7 @@ function getRequirementsSection() {
 - **Camera**: \`cam(x, y)\` in pixels moves the view over the world (sprites and tilemap); levels can scroll horizontally AND vertically
 - **Text**: only A-Z, 0-9 and these symbols: ! # % ( ) * + , - . / : ; < = > ? [ ] (others show as blanks; print() uppercases); drawn in palette color 1, so keep palette[1] bright (e.g. white)
 - **Input**: held state in input.up, input.down, input.left, input.right, input.a, input.b; just-pressed-this-frame in input.upPressed, input.downPressed, input.leftPressed, input.rightPressed, input.aPressed, input.bPressed (use these for shooting, menus, rotating pieces)
+- **Design like the best NES games**: a title screen and a clear goal; difficulty that ramps up; danger that is easy to read (hazards contrast with the background); a short flashing invincibility after a hit; fades between screens and areas; lives with checkpoints rather than restarting from the beginning; a sound and a visual reaction (flash, ripple, pop) for every important event
 - **Start**: the game must not end before the player has pressed anything - e.g. show a title with "PRESS A" and start on input.aPressed (see examples)
 - **Scoring**: Always include a score system - return current score as a number in update()
 - **Game Over**: Include win/lose conditions - return gameOver: true when game ends; the console then shows the final score and leaderboard
@@ -133,6 +136,31 @@ ${failure}
 <task>
 Fix the problem and return the complete corrected game as a single \`\`\`javascript block with metadata(), resources(), and update().
 The game must not end before the player has pressed anything.
+</task>
+`;
+}
+
+// Follow-up turn after the game ran: the model looks at screenshots and fixes what looks wrong
+export const REVIEW_OK = 'LOOKS GOOD';
+
+export function createReviewPrompt(labels) {
+  return `
+<screenshots>
+The game runs. The console played it with scripted input (1s idle, then A, run right, run left, up, down, B) and took these screenshots, enlarged 4x:
+${labels.map((label, i) => `${i + 1}. ${label}`).join('\n')}
+</screenshots>
+
+<task>
+Look at the screenshots as a player seeing the game for the first time:
+- Is the title readable and does it say how to start?
+- Can you see and recognize the player, enemies and items, and does the art look like what it is meant to be?
+- Is any text cut off, overlapping or unreadable against what is behind it?
+- Is the screen empty, black, garbled, or missing its background or level?
+- Does the HUD show the score (and lives or health if the game has them)?
+- Does it look like a polished NES game?
+
+If everything looks right, reply with only: ${REVIEW_OK}
+Otherwise fix the problems and return the complete corrected game as a single \`\`\`javascript block.
 </task>
 `;
 }

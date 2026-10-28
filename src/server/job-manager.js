@@ -56,6 +56,14 @@ export class JobManager {
       }
     }
 
+    if (job.reviewedGame) {
+      try {
+        job.reviewedGame = JSON.parse(job.reviewedGame);
+      } catch (e) {
+        console.error(`Failed to parse reviewedGame for job ${jobId}:`, e);
+      }
+    }
+
     // Calculate progress for in-progress jobs
     if (job.status === 'in_progress' || job.status === 'polling') {
       job.progress = this.calculateProgress(job);
@@ -88,6 +96,16 @@ export class JobManager {
       openaiResponseId,
       fixAttempts: String(fixAttempts),
       lastError
+    });
+  }
+
+  // The game works and the model is looking at its screenshots; keep the game in case the review breaks it
+  async markJobReviewing(jobId, openaiResponseId, gameDefinition) {
+    await this.updateJob(jobId, {
+      status: 'polling',
+      openaiResponseId,
+      reviewed: '1',
+      reviewedGame: JSON.stringify(gameDefinition)
     });
   }
 

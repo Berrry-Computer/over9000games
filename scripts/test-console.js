@@ -246,10 +246,70 @@ test('memory layout is found through the region table', () => {
   words.set([MEMORY_MAGIC, MEMORY_VERSION, regions.length, ...regions.flat()]);
   assert.match(readMemoryLayout(words), /region OAM is too small/);
   const big = new Int16Array(4096);
-  big.set([MEMORY_MAGIC, MEMORY_VERSION, 5, 9, 16, 4, 1, 20, 16, 2, 36, 300, 3, 336, 256, 4, 592, 768]);
-  assert.deepEqual(readMemoryLayout(big), { REGS: 20, OAM: 36, TEXT: 336, BG: 592 }); // longer OAM is fine
+  big.set([MEMORY_MAGIC, MEMORY_VERSION, 7, 9, 32, 4, 1, 36, 16, 2, 52, 300, 3, 352, 256, 4, 608, 768, 5, 1376, 16, 6, 1392, 256]);
+  assert.deepEqual(readMemoryLayout(big), { REGS: 36, OAM: 52, TEXT: 352, BG: 608, PAL: 1376, LINE_SCROLL: 1392 }); // longer OAM is fine
+  big[2] = 6;
+  assert.match(readMemoryLayout(big), /no LINE_SCROLL region/);
+  big[2] = 7;
   big[1] = MEMORY_VERSION + 1;
   assert.match(readMemoryLayout(big), /version/);
+});
+
+test('memory: PAL recolors the screen, sprites and text until changed back', () => {
+  const game = `
+    let frame = 0;
+    function metadata() { return { title: 'pal', memory: 1 }; }
+    function resources() { return {}; }
+    function update() {
+      frame++;
+      if (frame === 1) { PAL[2] = 31; PAL[1] = 31 << 5; } // index 2 pure blue, index 1 (sprites, font) pure green
+      if (frame === 3) PAL[2] = -1;                      // back to the resources() color
+      REGS[REG_BG_COLOR] = 2;
+      OAM[0] = 1; OAM[1] = 40; OAM[2] = 40;
+      TEXT[0] = 0x100 + 73;                              // 'I' has a solid column at x = 3
+      return {};
+    }`;
+  const BLUE = 0xFFFF0000;
+  for (const frames of [1, 2]) {
+    const { px } = runGame(game, frames);
+    assert.equal(px(100, 100), BLUE);
+    assert.equal(px(40, 40), GREEN);
+    assert.equal(px(3, 1), GREEN);
+  }
+  assert.equal(runGame(game, 3).px(100, 100), RED);
+  assert.equal(runGame(game.replace('PAL[2] = 31;', ''), 1).px(100, 100), RED); // untouched entries keep their color
+});
+
+test('memory: LINE_SCROLL offsets the tilemap per scanline, sprites stay put', () => {
+  const game = (lines) => `
+    function metadata() { return { title: 'lines', memory: 1 }; }
+    function resources() { return { tilemap: { width: 32, height: 32, wrap: true, rows: ${JSON.stringify(
+      Array.from({ length: 32 }, (_, y) => Array.from({ length: 32 }, (_, x) => ((x * 7 + y * 3) % 4).toString(16).padStart(2, '0')).join('')))} } }; }
+    function update() {
+      REGS[REG_CAM_X] = 13; REGS[REG_CAM_Y] = -5;
+      ${lines}
+      OAM[0] = 1; OAM[1] = 73; OAM[2] = 15; // screen (60, 20)
+      return {};
+    }`;
+  const plain = runGame(game(''));
+  assert.equal(plain.state.lineScroll, null);
+  const zero = runGame(game('LINE_SCROLL[0] = 0;'));
+  // The scanline renderer draws the same pixels as the tile renderer when nothing is offset
+  const renderer = new ConsoleRenderer();
+  renderer.loadResources(sprites, palette);
+  const lines = new Int16Array(256);
+  zero.state.lineScroll = lines;
+  renderer.render(zero.state);
+  for (let i = 0; i < 128 * 128; i++) assert.equal(renderer.frame[i], plain.px(i % 128, Math.floor(i / 128)));
+
+  // Line 20 shifted 3px left and 8px down, the rest unchanged; the sprite on line 20 doesn't move
+  const shifted = runGame(game('LINE_SCROLL[40] = 3; LINE_SCROLL[41] = 8;'));
+  assert.ok(shifted.state.lineScroll);
+  for (let x = 0; x < 128; x++) {
+    if (x >= 60 && x < 68) assert.equal(shifted.px(x, 20), WHITE);
+    else assert.equal(shifted.px(x, 20), plain.px((x + 3) % 128, 28) , `x ${x}`);
+    assert.equal(shifted.px(x, 21), plain.px(x, 21));
+  }
 });
 
 console.log(`\n${passed} passed`);

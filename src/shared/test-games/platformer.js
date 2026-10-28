@@ -48,14 +48,14 @@ function resources() {
         "08800880",
         "99000099"
       ],
-      // Sprite 3: Scorpion tail half (left when facing right) - segmented tail curling over the back to a red stinger
+      // Sprite 3: Scorpion tail half (left when facing right) - red segmented tail curling over the back to a yellow stinger
       [
-        "000eee00",
-        "00e000e2",
-        "00e00002",
-        "00e00000",
-        "000eeeee",
-        "0e9ee9ee",
+        "00022200",
+        "0020002f",
+        "0020000f",
+        "00200000",
+        "00022222",
+        "02922922",
         "00909090",
         "09090909"
       ],
@@ -63,11 +63,11 @@ function resources() {
       [
         "00000000",
         "00000000",
-        "000000ee",
-        "0000000e",
-        "eeeee1ee",
-        "9ee9eeee",
-        "909090e0",
+        "00000022",
+        "00000002",
+        "22222122",
+        "92292222",
+        "90909020",
         "90909000"
       ],
       // Sprite 5: Bat, wings up - red eyes, gray body, brown wings
@@ -345,41 +345,216 @@ function resources() {
         "08800880",
         "08800088",
         "99000009"
+      ],
+      // Sprite 30: Cloud, left end - white puff with a light gray underside (desert sky band)
+      [
+        "00000000",
+        "00000110",
+        "00001111",
+        "00111111",
+        "01111111",
+        "11111111",
+        "1ccccccc",
+        "0ccccccc"
+      ],
+      // Sprite 31: Cloud, middle
+      [
+        "00111000",
+        "01111100",
+        "11111110",
+        "11111111",
+        "11111111",
+        "11111111",
+        "cccccccc",
+        "cccccccc"
+      ],
+      // Sprite 32: Cloud, right end
+      [
+        "00000000",
+        "00000000",
+        "01100000",
+        "11110000",
+        "11111100",
+        "11111110",
+        "ccccccc0",
+        "cccccc00"
+      ],
+      // Sprite 33: Distant pyramid, sunlit left slope
+      [
+        "0000000d",
+        "000000dd",
+        "00000ddd",
+        "0000dddd",
+        "000ddddd",
+        "00dddddd",
+        "0ddddddd",
+        "dddddddd"
+      ],
+      // Sprite 34: Distant pyramid, shaded right slope
+      [
+        "e0000000",
+        "ee000000",
+        "eee00000",
+        "eeee0000",
+        "eeeee000",
+        "eeeeee00",
+        "eeeeeee0",
+        "eeeeeeee"
+      ],
+      // Sprite 35: Sunlit sandstone blocks - pyramid faces and the temple front
+      [
+        "dddddddd",
+        "dddddddd",
+        "dddddddd",
+        "eeeeeeee",
+        "dddddddd",
+        "dddddddd",
+        "dddddddd",
+        "eeeeeeee"
+      ],
+      // Sprite 36: Distant pyramid, shaded face
+      [
+        "eeeeeeee",
+        "eeeeeeee",
+        "eeeeeeee",
+        "99999999",
+        "eeeeeeee",
+        "eeeeeeee",
+        "eeeeeeee",
+        "99999999"
+      ],
+      // Sprite 37: Far dunes, crest
+      [
+        "00000000",
+        "00eeee00",
+        "0eeeeee0",
+        "eeeeeeee",
+        "eeeeeeee",
+        "eeee9eee",
+        "eeeeeeee",
+        "e9eeeeee"
+      ],
+      // Sprite 38: Far dunes, hollow between crests
+      [
+        "00000000",
+        "00000000",
+        "00000000",
+        "e000000e",
+        "ee0000ee",
+        "eeeeeeee",
+        "eee9eeee",
+        "eeeeeee9"
+      ],
+      // Sprite 39: Desert sand, surface (solid)
+      [
+        "dddddddd",
+        "ddeddddd",
+        "dddddedd",
+        "eddddddd",
+        "dddeddde",
+        "dddddddd",
+        "ddddeddd",
+        "eddddddd"
+      ],
+      // Sprite 40: Desert sand, packed underneath (solid)
+      [
+        "eeeeeeee",
+        "ee9eeeee",
+        "eeeee9ee",
+        "9eeeeeee",
+        "eeeeeeee",
+        "eee9eee9",
+        "eeeeeeee",
+        "e9eeeeee"
+      ],
+      // Sprite 41: Temple door, top - dark doorway in a sandstone frame
+      [
+        "dddddddd",
+        "dd3333dd",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d"
+      ],
+      // Sprite 42: Temple door, bottom
+      [
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "d333333d",
+        "dddddddd"
+      ],
+      // Sprite 43: Sand plain between the far dunes and the ground (not solid) - color 4 is pale haze in the desert
+      [
+        "44444444",
+        "44444444",
+        "4444d444",
+        "44444444",
+        "44444444",
+        "44444444",
+        "d4444444",
+        "44444444"
       ]
     ],
-    palette: [
-      0x000000, // 0: Black
-      0xFFFFFF, // 1: Pure white (for coin highlights)
-      0xCC3300, // 2: Brick red
-      0x22180F, // 3: Tomb wall (dark sandstone in shadow)
-      0x3A2A1B, // 4: Tomb wall highlight / carvings
-      0xFFD700, // 5: Bright gold (Mario-style coin)
-      0xFF7A1A, // 6: Flame orange
-      0x6B6B6B, // 7: Medium gray
-      0x4A4A4A, // 8: Dark gray/shadow
-      0x8B4513, // 9: Saddle brown
-      0x1B2430, // a: Cave rock (cold blue-gray)
-      0x5FC4E8, // b: Crystal cyan
-      0xA8A8A8, // c: Light gray (stone and metal highlights)
-      0xD2B48C, // d: Tan
-      0xCD853F, // e: Peru/bronze
-      0xFFE36B  // f: Flame yellow
-    ],
+    palette: PALETTE, // a const so fades can compute darker versions of each color
     // Rows can be arrays of tile ids: the level plus backdrop tiles in its empty cells
-    tilemap: { width: 64, height: 32, rows: LEVEL_ROWS.map((row, y) => parseLevelRow(row).map((id, x) => id || backdropTile(x, y))) },
+    tilemap: { width: 64, height: 48, rows: LEVEL_ROWS.map((row, y) => parseLevelRow(row).map((id, x) => id || backdropTile(x, y))) },
     music: SONGS
   };
 }
+
+// 16 colors; PAL in console memory can replace any of them while the game runs
+const PALETTE = [
+  0x000000, // 0: Black
+  0xFFFFFF, // 1: Pure white (for coin highlights)
+  0xCC3300, // 2: Brick red
+  0x22180F, // 3: Tomb wall (dark sandstone in shadow)
+  0x3A2A1B, // 4: Tomb wall highlight / carvings
+  0xFFD700, // 5: Bright gold (Mario-style coin)
+  0xFF7A1A, // 6: Flame orange
+  0x6B6B6B, // 7: Medium gray
+  0x4A4A4A, // 8: Dark gray/shadow
+  0x8B4513, // 9: Saddle brown
+  0x1B2430, // a: Cave rock (cold blue-gray)
+  0x5FC4E8, // b: Crystal cyan, also the desert sky (background color)
+  0xA8A8A8, // c: Light gray (stone and metal highlights)
+  0xD2B48C, // d: Tan
+  0xCD853F, // e: Peru/bronze
+  0xFFE36B  // f: Flame yellow
+];
 
 // Game constants
 const SCREEN_WIDTH = 128;
 const SCREEN_HEIGHT = 128;
 const WORLD_WIDTH = 512;  // 64 tiles wide
-const WORLD_HEIGHT = 256; // 32 tiles tall: the camera scrolls both ways
+const WORLD_HEIGHT = 384; // 48 tiles: the tomb (rows 0-31) above the desert (rows 32-47)
 const SPRITE_SIZE = 8;
 const TILE_SIZE = 8;
 const TILES_X = 64;  // Expanded for scrolling
-const TILES_Y = 32;
+const TILES_Y = 48;
+const TOMB_HEIGHT = 256; // in the tomb the camera scrolls both ways inside rows 0-31
+const DESERT_TOP = 256;  // the desert is one screen tall, so its camera y stays here
+
+// Desert parallax: LINE_SCROLL shifts the tilemap on each screen line, so the sky bands move slower than the ground
+const CLOUD_LINES = 32;    // screen lines 0-31: clouds at 1/4 camera speed, drifting
+const DUNE_LINES = 64;     // screen lines 32-63: pyramids and dunes at 1/2 camera speed
+const CLOUD_DRIFT = 4;     // px/s the clouds blow by on their own
+const CLOUD_PERIOD = 128;  // the cloud rows repeat every 16 tiles, so their scroll can wrap
+
+// Screen fades: PAL in console memory darkens every color, in NES-like steps
+const FADE_TIME = 0.4;     // seconds to fade out, and again to fade back in
+const FADE_HOLD = 0.15;    // seconds of black in between (the level changes here)
+const FADE_STEPS = 4;
+const TOMB_WALL_HIGHLIGHT = 4; // palette index swapped for the desert's sand haze
+const SAND_HAZE = 0xF0DCAC;
+const CRYSTAL_COLOR = 0xb; // only the cavern crystals use it: PAL cycles it to make them shimmer
+const CRYSTAL_SHADES = [0x5FC4E8, 0x9FE6FF, 0xE0FAFF, 0x9FE6FF];
+const CRYSTAL_SHIMMER_TIME = 0.15;
 
 // Character dimensions
 const PLAYER_WIDTH = SPRITE_SIZE;
@@ -437,9 +612,12 @@ const ENEMY_KILL_SCORE = 100;
 const COIN_SCORE = 50;
 const BRICK_SCORE = 10;
 
-// Starting positions
+// Starting positions and checkpoints: losing all hearts costs a life and restarts at the last checkpoint
 const PLAYER_START_X = 16;
-const PLAYER_START_Y = 88; // Standing on platform at row 13 (104 - 16 = 88)
+const PLAYER_START_Y = 352; // Standing on the desert sand at row 46 (368 - 16)
+const TOMB_START = { x: 16, y: 88 };     // just inside the temple door, on the platform at row 13
+const CAVERN_START = { x: 448, y: 152 }; // the ledge under the shaft into the cavern
+const LIVES = 3;
 
 // Tile IDs
 const TILE_EMPTY = 0;
@@ -448,6 +626,14 @@ const TILE_BRICK = 9;
 const TILE_METAL = 10;
 const TILE_SPIKES = 11;
 const TILE_EXIT = 12;
+const TILE_SAND = 39;
+const TILE_SAND_DEEP = 40;
+const TILE_DOOR_TOP = 41;
+const TILE_DOOR_BOTTOM = 42;
+
+function isSolid(tileId) {
+  return tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL || tileId === TILE_SAND || tileId === TILE_SAND_DEEP;
+}
 
 // Sprite IDs
 const SPRITE_EXPLORER_HEAD = 0;
@@ -587,8 +773,9 @@ const TILE_CAVE_SPECK = 22;
 const TILE_STALACTITE = 23;
 const TILE_CRYSTAL = 24;
 
-// Level: 64x32 tiles, 2 hex chars per tile (00=empty, 06=platform, 09=brick, 0a=metal, 0b=spikes, 0c=exit)
-// Rows 0-15 are the ruins; a shaft near the right end drops into the cavern (rows 16-31) with the exit
+// Level: 64x48 tiles, 2 hex chars per tile (00=empty, 06=platform, 09=brick, 0a=metal, 0b=spikes, 0c=exit,
+// 27/28=sand, 29/2a=temple door). The game starts in the desert (rows 32-47); the door leads into the tomb:
+// rows 0-15 are the ruins, a shaft near the right end drops into the cavern (rows 16-31) with the exit
 // The console draws it from resources().tilemap; the game keeps its own copy for collisions
 const LEVEL_ROWS = [
   "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
@@ -623,6 +810,23 @@ const LEVEL_ROWS = [
   "000c00000000000000000b0b0b0000000000000000000000000000000000000000000000000000000b0b0b0b0b0b0b0b00000000000000000000000000000000",
   "06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
   "06060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+  // Desert outside the temple (rows 32-47, one screen tall): rows 32-39 are the sky bands, sand at 46-47 with pits
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000606060000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000090909090000000000000000000000000000000000000000000000000000000000000000000000",
+  "00000000000000000000060606000000000000000000000000000000000000000000000000000006060606000000000000000000000000000000000000000000",
+  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000029000000",
+  "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b0b0000000000002a000000",
+  "27272727272727272727272727272727272700000027272727272727272727272700000027272727272727272727272700002727272727272727272727272727",
+  "28282828282828282828282828282828282800000028282828282828282828282800000028282828282828282828282800002828282828282828282828282828",
 ];
 
 function parseLevelRow(row) {
@@ -634,17 +838,49 @@ function parseLevelRow(row) {
 // Burning torches on the tomb wall; update() swaps their tiles to make the flames flicker
 const WALL_TORCHES = [4, 14, 26, 36, 46, 54].map(x => ({ x, y: 6 }));
 const TORCH_FLICKER_TIME = 0.18; // seconds per flame frame
-const CAVERN_TOP_ROW = 14;
+const CAVERN_TOP_ROW = 14;        // The upper floor and everything below it is the cavern
+const DESERT_TOP_ROW = 32;
+const TILE_CLOUD_LEFT = 30, TILE_CLOUD = 31, TILE_CLOUD_RIGHT = 32;
+const TILE_PYRAMID_LEFT = 33, TILE_PYRAMID_RIGHT = 34, TILE_SANDSTONE = 35, TILE_PYRAMID_SHADE = 36;
+const TILE_DUNE_CREST = 37, TILE_DUNE_HOLLOW = 38, TILE_SAND_PLAIN = 43;
+const CLOUDS = [{ row: 32, x: 12, length: 2 }, { row: 33, x: 1, length: 3 }, { row: 34, x: 7, length: 5 }]; // x within each 16-tile repeat
+const PYRAMIDS = [{ x: 4, height: 3 }, { x: 17, height: 3 }, { x: 23, height: 2 }, { x: 30, height: 3 }]; // left edge of the base
+const TEMPLE_LEFT = 56; // the temple front fills the desert's right end around the door
 const BAT_BOB_SPEED = 30;         // px/s of the bats' up/down wobble
 const STALACTITE_TIP = 6;          // lowest pixel row of the stalactite art
-const STALACTITE_KNOCKBACK = 60;   // downward speed after bumping one, px/s       // The upper floor and everything below it is the cavern
+const STALACTITE_KNOCKBACK = 60;   // downward speed after bumping one, px/s
+
+// Desert backdrop: drifting clouds, distant pyramids on the dunes, sand down to the ground, the temple front at the right end
+function desertTile(x, y) {
+  if (y < 36) {
+    for (const cloud of CLOUDS) {
+      const i = (x % 16) - cloud.x;
+      if (y === cloud.row && i >= 0 && i < cloud.length) return i === 0 ? TILE_CLOUD_LEFT : i === cloud.length - 1 ? TILE_CLOUD_RIGHT : TILE_CLOUD;
+    }
+    return TILE_EMPTY;
+  }
+  if (y < 40) {
+    // Pyramid bases take the dune row's place so they stand on the sand instead of above the dunes
+    for (const pyramid of PYRAMIDS) {
+      const level = y - (40 - pyramid.height); // 0 = tip row
+      const width = 2 + level * 2;
+      const i = x - (pyramid.x + pyramid.height - 1 - level);
+      if (level < 0 || i < 0 || i >= width) continue;
+      if (i === 0) return TILE_PYRAMID_LEFT;
+      if (i === width - 1) return TILE_PYRAMID_RIGHT;
+      return i < width / 2 ? TILE_SANDSTONE : TILE_PYRAMID_SHADE;
+    }
+    if (y === 39) return x % 2 === 0 ? TILE_DUNE_CREST : TILE_DUNE_HOLLOW;
+    return TILE_EMPTY;
+  }
+  if (x >= TEMPLE_LEFT && y < 46) return y === 40 ? TILE_PYRAMID_SHADE : TILE_SANDSTONE; // shaded cornice on top
+  return y < 46 ? TILE_SAND_PLAIN : TILE_EMPTY; // sand runs down to the ground so nothing floats; pits stay open
+}
 
 // Which backdrop tile goes in an empty cell: carved tomb wall above, dark cave below
 function backdropTile(x, y) {
-  const solid = (tx, ty) => {
-    const id = ty >= 0 && ty < LEVEL_ROWS.length ? parseInt(LEVEL_ROWS[ty].substr(tx * 2, 2), 16) : 0;
-    return id === TILE_PLATFORM || id === TILE_BRICK || id === TILE_METAL;
-  };
+  if (y >= DESERT_TOP_ROW) return desertTile(x, y);
+  const solid = (tx, ty) => isSolid(ty >= 0 && ty < LEVEL_ROWS.length ? parseInt(LEVEL_ROWS[ty].substr(tx * 2, 2), 16) : 0);
   const hash = (x * 7 + y * 13 + x * y) % 23; // fixed pseudo-random variety
   if (y < CAVERN_TOP_ROW) {
     if (WALL_TORCHES.some(t => t.x === x && t.y === y)) return TILE_WALL_TORCH_1;
@@ -798,6 +1034,110 @@ const WIN_PAUSE = 3.2;         // seconds of victory jingle before the game ends
 
 let gameState;
 
+// PAL takes RGB555: 5 bits per channel
+function rgb(color) {
+  return ((color >> 19) & 31) << 10 | ((color >> 11) & 31) << 5 | ((color >> 3) & 31);
+}
+
+// 1 = the normal palette, 0 = black; PAL keeps whatever was written last, so -1 hands colors back
+function fadePalette(brightness) {
+  // The desert never shows the tomb wall, so its color 4 becomes the pale sand haze behind the explorer
+  const desert = gameState.area === 'desert';
+  if (brightness >= 1) { PAL.fill(-1); if (desert) PAL[TOMB_WALL_HIGHLIGHT] = rgb(SAND_HAZE); return; }
+  for (let i = 0; i < 16; i++) {
+    const c = desert && i === TOMB_WALL_HIGHLIGHT ? SAND_HAZE : PALETTE[i];
+    const scale = (shift) => Math.floor(((c >> shift) & 255) * brightness) << shift;
+    PAL[i] = rgb(scale(16) | scale(8) | scale(0));
+  }
+}
+
+// Fade out, run `atBlack` (move the player, change area) while the screen is dark, fade back in
+function startTransition(atBlack) {
+  if (!gameState.transition) gameState.transition = { time: 0, atBlack, done: false };
+}
+
+function updateTransition(dt) {
+  const t = gameState.transition;
+  if (!t) return 1;
+  t.time += dt;
+  if (!t.done && t.time >= FADE_TIME + FADE_HOLD / 2) {
+    t.done = true;
+    if (t.atBlack) t.atBlack();
+  }
+  const fadeIn = t.time - FADE_TIME - FADE_HOLD;
+  if (fadeIn >= FADE_TIME) { gameState.transition = null; return 1; }
+  const brightness = fadeIn > 0 ? fadeIn / FADE_TIME : Math.max(0, 1 - t.time / FADE_TIME);
+  return Math.round(brightness * FADE_STEPS) / FADE_STEPS;
+}
+
+// Camera, parallax and palette for this frame
+function present(brightness) {
+  const camX = Math.floor(gameState.camera.x);
+  cam(camX, gameState.camera.y);
+  // In the desert the sky bands scroll slower than the ground; the tomb has no bands
+  for (let line = 0; line < DUNE_LINES; line++) {
+    let dx = 0;
+    if (gameState.area === 'desert') {
+      const bandX = line < CLOUD_LINES
+        ? (Math.floor(camX / 4) + Math.floor(gameState.animTime * CLOUD_DRIFT)) % CLOUD_PERIOD
+        : Math.floor(camX / 2);
+      dx = bandX - camX;
+    }
+    LINE_SCROLL[line * 2] = dx;
+  }
+  fadePalette(brightness);
+  if (brightness >= 1 && gameState.inCavern) {
+    PAL[CRYSTAL_COLOR] = rgb(CRYSTAL_SHADES[Math.floor(gameState.animTime / CRYSTAL_SHIMMER_TIME) % CRYSTAL_SHADES.length]);
+  }
+  REGS[REG_BG_COLOR] = gameState.area === 'desert' ? 0xb : 0;
+}
+
+// Put the player at a checkpoint with full hearts (after a lost life or going through the door)
+function placePlayer(spot) {
+  const player = gameState.player;
+  Object.assign(player, { x: spot.x, y: spot.y, vx: 0, vy: 0, onGround: true, health: 3, isDead: false, deathTimer: 0,
+    invincible: false, invincibleTimer: 0, throwTime: undefined, thrown: false, groundY: undefined });
+  gameState.projectiles = [];
+  gameState.area = spot.y >= DESERT_TOP ? 'desert' : 'tomb';
+  gameState.camera.x = Math.max(0, Math.min(spot.x - 64, WORLD_WIDTH - SCREEN_WIDTH));
+  const groundCamera = spot.y + PLAYER_HEIGHT <= UPPER_FLOOR_Y ? 0 : spot.y + PLAYER_HEIGHT + CAMERA_GROUND_MARGIN - SCREEN_HEIGHT;
+  gameState.camera.y = gameState.area === 'desert' ? DESERT_TOP : Math.max(0, Math.min(groundCamera, TOMB_HEIGHT - SCREEN_HEIGHT));
+}
+
+// Coins, the explorer, enemies, torches and the HUD
+function drawWorld() {
+  const player = gameState.player;
+  for (const coin of gameState.coins) {
+    if (!coin.collected) spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, coin.x / 40), coin.x, coin.y);
+  }
+
+  // Explorer pose: death overrides everything, then the hurt flash, then walking
+  if (player.isDead) {
+    drawExplorer(SPRITE_EXPLORER_BODY_DEATH, false);
+  } else if (player.invincible && player.invincibleTimer > 0 && player.health > 0) {
+    // Flash during invincibility: hidden on every other 0.1s step
+    if (Math.floor(player.invincibleTimer * 10) % 2 === 0) drawExplorer(SPRITE_EXPLORER_BODY_HURT, true);
+  } else if (player.throwTime !== undefined) {
+    // Wind-up: the torch held back behind the shoulder, drawn first so the explorer covers it
+    if (!player.thrown) spr(SPRITE_TORCH, player.x + player.facing * THROW_WINDUP_X, player.y + THROW_WINDUP_Y, player.facing < 0 ? OAM_FLIP_H : 0);
+    drawExplorer(player.thrown ? SPRITE_EXPLORER_BODY_THROW : SPRITE_EXPLORER_BODY_WINDUP, true);
+  } else {
+    drawExplorer(player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2, true);
+  }
+
+  drawEnemies();
+
+  // Thrown torches
+  for (const proj of gameState.projectiles) spr(SPRITE_TORCH, proj.x, proj.y);
+
+  // HUD on the text layer: screen grid, doesn't scroll with the camera
+  for (let i = 0; i < player.health; i++) TEXT[i] = SPRITE_HEART; // row 0
+  TEXT[4] = SPRITE_EXPLORER_HEAD; // lives left
+  print(5, 0, "X" + gameState.lives);
+  const scoreText = String(gameState.score);
+  print(16 - scoreText.length, 0, scoreText);
+}
+
 function update(deltaTime, input) {
   spriteCount = 0;
   REGS[REG_TEXT_BG] = -1; // no backing behind text unless a screen asks for it
@@ -826,7 +1166,9 @@ function update(deltaTime, input) {
         { x: 216, y: 56, vx: -ENEMY_SPEED_1, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },  // Scorpion on row 9 platform
         { x: 368, y: 56, vx: ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },   // Scorpion on row 9 platform
         { x: 232, y: 208, vx: ENEMY_SPEED_1, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 },  // Cavern: metal walkway
-        { x: 120, y: 232, vx: -ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 }  // Cavern floor
+        { x: 120, y: 232, vx: -ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 }, // Cavern floor
+        { x: 104, y: 360, vx: -ENEMY_SPEED_2, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 }, // Desert sand
+        { x: 296, y: 360, vx: ENEMY_SPEED_1, vy: 0, onGround: false, health: 1, type: 'scorpion', walkFrame: 0, walkTimer: 0 }  // Desert sand
       ],
       bats: [
         { x: 120, y: 40, vx: -30, vy: 0, health: 1, pattern: 'sine', phase: 0, minY: 16, maxY: 80 },  // Flying bat with sine wave pattern
@@ -854,19 +1196,31 @@ function update(deltaTime, input) {
         { x: 64, y: 184, collected: false },
         { x: 80, y: 184, collected: false },
         { x: 200, y: 200, collected: false },
-        { x: 360, y: 216, collected: false }
+        { x: 360, y: 216, collected: false },
+        // Desert
+        { x: 88, y: 328, collected: false },
+        { x: 152, y: 336, collected: false },
+        { x: 216, y: 320, collected: false },
+        { x: 272, y: 336, collected: false },
+        { x: 328, y: 328, collected: false },
+        { x: 360, y: 312, collected: false },
+        { x: 392, y: 344, collected: false }
       ],
       projectiles: [],
       gravity: GRAVITY,
       jumpPower: JUMP_POWER,
       playerSpeed: PLAYER_SPEED,
       score: 0,
+      lives: LIVES,
+      area: 'desert',
+      checkpoint: { x: PLAYER_START_X, y: PLAYER_START_Y },
+      transition: { time: FADE_TIME + FADE_HOLD, done: true }, // the game opens by fading in
       started: false,
       gameOver: false,
       levelComplete: false,
       camera: {
         x: 0,  // Current camera position
-        y: 0,
+        y: DESERT_TOP,
         targetX: 0  // Target camera position (where we want to be)
       },
       torchTimer: 0,
@@ -895,6 +1249,8 @@ function update(deltaTime, input) {
   gameState.animTime += dt;
   updateEnemyDeaths(dt);
 
+  const brightness = updateTransition(dt);
+
   // Title screen: wait for the player before starting the level
   if (!gameState.started) {
     if (input.aPressed) {
@@ -904,19 +1260,30 @@ function update(deltaTime, input) {
     print(1, 5, "TOMB EXPLORER");
     print(4, 9, "PRESS A");
     REGS[REG_TEXT_BG] = 0;
-    spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, 0), 60, 56);
+    spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, 0), 60, DESERT_TOP + 56);
+    present(brightness);
     return { score: 0, gameOver: false };
+  }
+
+  // During a fade the world holds still
+  if (gameState.transition) {
+    drawWorld();
+    present(brightness);
+    return { music: gameState.player.isDead ? 'death' : gameState.inCavern ? 'cavern' : 'main', score: gameState.score, gameOver: false, sounds };
   }
 
   // Handle death animation
   if (gameState.player.isDead) {
     gameState.player.deathTimer -= dt;
-    if (gameState.player.deathTimer <= 0) {
-      gameState.gameOver = true;
+    if (gameState.player.deathTimer <= 0 && !gameState.gameOver) {
+      // Lose a life: back to the last checkpoint, or game over when none are left
+      gameState.lives--;
+      if (gameState.lives > 0) startTransition(() => placePlayer(gameState.checkpoint));
+      else gameState.gameOver = true;
     }
 
     // During death animation, apply gravity but check for ground collision
-    if (!gameState.gameOver) {
+    if (!gameState.gameOver && !gameState.transition) {
       // Apply gravity, capped like normal falling so the body can't skip over a platform
       gameState.player.vy = Math.min(gameState.player.vy + GRAVITY_FALL * dt, MAX_FALL_SPEED);
       const newY = gameState.player.y + gameState.player.vy * dt;
@@ -933,7 +1300,7 @@ function update(deltaTime, input) {
         const tileY = Math.floor(bottomEdge / TILE_SIZE);
         if (tileX >= 0 && tileX < TILES_X && tileY >= 0 && tileY < TILES_Y) {
           const tileId = gameState.tilemap[tileY][tileX];
-          if (tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL) {
+          if (isSolid(tileId)) {
             // Hit ground - stop falling (or bump the ceiling if still rising)
             gameState.player.y = rising ? (tileY + 1) * TILE_SIZE : tileY * TILE_SIZE - PLAYER_HEIGHT;
             gameState.player.vy = 0;
@@ -976,7 +1343,7 @@ function update(deltaTime, input) {
       print(Math.floor((16 - scoreLine.length) / 2), 8, scoreLine);
       REGS[REG_TEXT_BG] = 0;
     }
-    cam(gameState.camera.x, gameState.camera.y);
+    present(brightness);
 
     return {
       music: gameState.levelComplete ? 'win' : 'death',
@@ -1059,11 +1426,6 @@ function update(deltaTime, input) {
     gameState.player.walkFrame = 0;
   }
 
-  // Helper function to check if a tile is solid
-  function isSolidTile(tileId) {
-    return tileId === TILE_PLATFORM || tileId === TILE_BRICK || tileId === TILE_METAL;
-  }
-
   // Helper function to get tile at position
   function getTileAt(x, y) {
     const tileX = Math.floor(x / TILE_SIZE);
@@ -1089,7 +1451,7 @@ function update(deltaTime, input) {
       // Check multiple points along the left edge
       for (let y = playerTop; y <= playerBottom; y += 2) {
         const tileId = getTileAt(leftEdge, y);
-        if (isSolidTile(tileId)) {
+        if (isSolid(tileId)) {
           canMoveHorizontally = false;
           // Snap to the right edge of the tile
           const tileX = Math.floor(leftEdge / TILE_SIZE);
@@ -1103,7 +1465,7 @@ function update(deltaTime, input) {
       // Check multiple points along the right edge
       for (let y = playerTop; y <= playerBottom; y += 2) {
         const tileId = getTileAt(rightEdge, y);
-        if (isSolidTile(tileId)) {
+        if (isSolid(tileId)) {
           canMoveHorizontally = false;
           // Snap to the left edge of the tile
           const tileX = Math.floor(rightEdge / TILE_SIZE);
@@ -1130,7 +1492,7 @@ function update(deltaTime, input) {
 
   for (let x = playerLeft; x <= playerRight; x += 4) {
     const tileId = getTileAt(x, currentBottomEdge);
-    if (isSolidTile(tileId)) {
+    if (isSolid(tileId)) {
       gameState.player.onGround = true;
       break;
     }
@@ -1162,7 +1524,7 @@ function update(deltaTime, input) {
       }
 
       // Check for solid platforms
-      if (isSolidTile(tileId)) {
+      if (isSolid(tileId)) {
         const tileY = Math.floor(bottomEdge / TILE_SIZE);
         gameState.player.y = tileY * TILE_SIZE - PLAYER_HEIGHT;
         if (gameState.player.vy >= MAX_FALL_SPEED) sounds.push(SFX.land); // thump after a long drop
@@ -1202,7 +1564,7 @@ function update(deltaTime, input) {
 
     for (let x = playerLeft; x <= playerRight; x += 4) {
       const tileId = getTileAt(x, topEdge);
-      if (isSolidTile(tileId)) {
+      if (isSolid(tileId)) {
         gameState.player.vy = 0;
         const tileY = Math.floor(topEdge / TILE_SIZE);
         gameState.player.y = (tileY + 1) * TILE_SIZE;
@@ -1280,10 +1642,12 @@ function update(deltaTime, input) {
   // Keep player in world bounds
   if (gameState.player.x < 0) gameState.player.x = 0;
   if (gameState.player.x > WORLD_WIDTH - PLAYER_WIDTH) gameState.player.x = WORLD_WIDTH - PLAYER_WIDTH;
-  if (gameState.player.y > WORLD_HEIGHT) {
-    gameState.player.y = PLAYER_START_Y;
-    gameState.player.x = PLAYER_START_X;
-    gameState.player.vy = 0;
+  // Falling into a desert pit costs a life
+  if (gameState.player.y > WORLD_HEIGHT && !gameState.player.isDead) {
+    gameState.player.health = 0;
+    gameState.player.isDead = true;
+    gameState.player.deathTimer = 1.0;
+    sounds.push(SFX.death);
   }
 
   } // End of if (!gameState.player.isDead) collision check block
@@ -1304,6 +1668,14 @@ function update(deltaTime, input) {
         }
       }
     }
+  }
+
+  // The temple door: once the explorer's middle is in the doorway, fade out, step inside, make it the checkpoint
+  if (!gameState.player.isDead && getTileAt(gameState.player.x + PLAYER_WIDTH / 2, gameState.player.y + PLAYER_HEIGHT - 1) === TILE_DOOR_BOTTOM) {
+    startTransition(() => {
+      gameState.checkpoint = TOMB_START;
+      placePlayer(TOMB_START);
+    });
   }
 
   // Update scorpion enemies with deltaTime and gravity
@@ -1335,7 +1707,7 @@ function update(deltaTime, input) {
     // Check for ground beneath scorpion
     for (let x = enemyLeft; x <= enemyRight; x += 4) {
       const tileId = getTileAt(x, enemyBottom);
-      if (isSolidTile(tileId)) {
+      if (isSolid(tileId)) {
         enemy.onGround = true;
         break;
       }
@@ -1346,7 +1718,7 @@ function update(deltaTime, input) {
       let hitPlatform = false;
       for (let x = enemyLeft; x <= enemyRight; x += 4) {
         const tileId = getTileAt(x, enemyBottom);
-        if (isSolidTile(tileId)) {
+        if (isSolid(tileId)) {
           const tileY = Math.floor(enemyBottom / TILE_SIZE);
           enemy.y = tileY * TILE_SIZE - SCORPION_HEIGHT;
           enemy.vy = 0;
@@ -1368,7 +1740,7 @@ function update(deltaTime, input) {
     let hitWall = false;
     for (let y = enemy.y; y < enemy.y + SCORPION_HEIGHT; y += 4) {
       const tileId = getTileAt(checkX, y);
-      if (isSolidTile(tileId)) {
+      if (isSolid(tileId)) {
         hitWall = true;
         break;
       }
@@ -1478,29 +1850,7 @@ function update(deltaTime, input) {
   }
 
   // Draw sprites (the console draws the tilemap itself)
-  for (const coin of gameState.coins) {
-    if (!coin.collected) spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, coin.x / 40), coin.x, coin.y);
-  }
-
-  // Explorer pose: death overrides everything, then the hurt flash, then walking
-  if (gameState.player.isDead) {
-    drawExplorer(SPRITE_EXPLORER_BODY_DEATH, false);
-  } else if (gameState.player.invincible && gameState.player.invincibleTimer > 0 && gameState.player.health > 0) {
-    // Flash during invincibility: hidden on every other 0.1s step
-    if (Math.floor(gameState.player.invincibleTimer * 10) % 2 === 0) drawExplorer(SPRITE_EXPLORER_BODY_HURT, true);
-  } else if (gameState.player.throwTime !== undefined) {
-    const player = gameState.player;
-    // Wind-up: the torch held back behind the shoulder, drawn first so the explorer covers it
-    if (!player.thrown) spr(SPRITE_TORCH, player.x + player.facing * THROW_WINDUP_X, player.y + THROW_WINDUP_Y, player.facing < 0 ? OAM_FLIP_H : 0);
-    drawExplorer(player.thrown ? SPRITE_EXPLORER_BODY_THROW : SPRITE_EXPLORER_BODY_WINDUP, true);
-  } else {
-    drawExplorer(gameState.player.walkFrame === 0 ? SPRITE_EXPLORER_BODY_WALK1 : SPRITE_EXPLORER_BODY_WALK2, true);
-  }
-
-  drawEnemies();
-
-  // Thrown torches
-  for (const proj of gameState.projectiles) spr(SPRITE_TORCH, proj.x, proj.y);
+  drawWorld();
 
   // Camera dead zone logic - only move camera when player approaches screen edges
   const playerScreenX = gameState.player.x - gameState.camera.x; // Player position relative to camera
@@ -1544,19 +1894,18 @@ function update(deltaTime, input) {
 
   // Clamp camera to world bounds
   gameState.camera.x = Math.max(0, Math.min(gameState.camera.x, WORLD_WIDTH - SCREEN_WIDTH));
-  gameState.camera.y = Math.max(0, Math.min(gameState.camera.y, WORLD_HEIGHT - SCREEN_HEIGHT));
+  gameState.camera.y = gameState.area === 'desert' ? DESERT_TOP : Math.max(0, Math.min(gameState.camera.y, TOMB_HEIGHT - SCREEN_HEIGHT));
 
-  // cam() rounds down like spr(), so a followed player stays on the same screen pixel
+  // present() rounds the camera down like spr(), so a followed player stays on the same screen pixel
   // (rounding the two differently makes the player wobble 1px against the level while scrolling)
-  cam(gameState.camera.x, gameState.camera.y);
+  present(brightness);
 
-  // Switch to the cavern theme once the player drops below the upper floor (sending a new name restarts music)
-  if (gameState.player.y > UPPER_FLOOR_Y + TILE_SIZE * 2) gameState.inCavern = true;
-
-  // HUD on the text layer: screen grid, doesn't scroll with the camera
-  for (let i = 0; i < gameState.player.health; i++) TEXT[i] = SPRITE_HEART; // row 0
-  const scoreText = String(gameState.score);
-  print(16 - scoreText.length, 0, scoreText);
+  // Switch to the cavern theme once the player drops below the upper floor (sending a new name restarts music);
+  // the ledge under the shaft becomes the checkpoint
+  if (gameState.area === 'tomb' && !gameState.inCavern && gameState.player.y > UPPER_FLOOR_Y + TILE_SIZE * 2) {
+    gameState.inCavern = true;
+    gameState.checkpoint = CAVERN_START;
+  }
 
   return {
     music: gameState.player.isDead ? 'death' : gameState.inCavern ? 'cavern' : 'main',

@@ -10,6 +10,7 @@ const SHEET_WIDTH = 128;
 const SHEET_HEIGHT = 256;
 const SHEET_SLOTS = (SHEET_WIDTH / 8) * (SHEET_HEIGHT / 8); // 512 ids
 const TRANSPARENT = 0;
+const OPAQUE_BLACK = 16; // sheet value for unused slots and bad hex digits
 
 // Pixels are packed as little-endian RGBA bytes, i.e. 0xAABBGGRR
 function packColor(color) {
@@ -19,12 +20,21 @@ function packColor(color) {
   return (0xFF000000 | (b << 16) | (g << 8) | r) >>> 0;
 }
 
+// PAL entries are RGB555 (r << 10 | g << 5 | b); 5 bits widen to 8 so 31 becomes 255
+function packRgb555(value) {
+  const widen = (c) => (c << 3) | (c >> 2);
+  return packColor((widen((value >> 10) & 31) << 16) | (widen((value >> 5) & 31) << 8) | widen(value & 31));
+}
+
 export class ConsoleRenderer {
   constructor() {
-    this.sheet = new Uint32Array(SHEET_WIDTH * SHEET_HEIGHT);
+    // The sheet keeps palette indices, so palette changes apply without rebuilding it
+    this.sheet = new Uint8Array(SHEET_WIDTH * SHEET_HEIGHT);
     this.frame = new Uint32Array(SCREEN_WIDTH * SCREEN_HEIGHT);
     this.pixels = new Uint8ClampedArray(this.frame.buffer);
     this.palette = [];
+    this.colors = new Uint32Array(OPAQUE_BLACK + 1); // packed color per sheet value, this frame
+    this.baseColors = new Uint32Array(OPAQUE_BLACK + 1);
   }
 
   /**
@@ -33,7 +43,10 @@ export class ConsoleRenderer {
    */
   loadResources(sprites, palette) {
     this.palette = palette;
-    this.sheet.fill(packColor(0));
+    for (let i = 0; i < OPAQUE_BLACK; i++) this.baseColors[i] = packColor(this.palette[i] || 0);
+    this.baseColors[OPAQUE_BLACK] = packColor(0);
+    this.colors.set(this.baseColors);
+    this.sheet.fill(OPAQUE_BLACK);
 
     if (Array.isArray(sprites)) {
       sprites.forEach((sprite, index) => this.writeSprite(sprite, index));
@@ -50,15 +63,28 @@ export class ConsoleRenderer {
       const row = sprite[y];
       for (let x = 0; x < 8; x++) {
         const colorIndex = parseInt(row == null ? undefined : row[x], 16);
-        this.sheet[(pos.y + y) * SHEET_WIDTH + pos.x + x] = colorIndex === 0
-          ? TRANSPARENT
-          : packColor(this.palette[colorIndex] || 0);
+        this.sheet[(pos.y + y) * SHEET_WIDTH + pos.x + x] = colorIndex >= 0 && colorIndex < OPAQUE_BLACK
+          ? colorIndex
+          : OPAQUE_BLACK;
       }
     }
   }
 
   paletteColor(index) {
-    return packColor(this.palette[index] || 0);
+    return Number.isInteger(index) && index >= 0 && index < OPAQUE_BLACK
+      ? this.colors[index]
+      : packColor(this.palette[index] || 0);
+  }
+
+  /**
+   * This frame's colors: the game's palette with console memory PAL overrides (-1 = keep)
+   */
+  updateColors(overrides) {
+    this.colors.set(this.baseColors);
+    if (!overrides) return;
+    for (let i = 0; i < OPAQUE_BLACK; i++) {
+      if (overrides[i] >= 0) this.colors[i] = packRgb555(overrides[i]);
+    }
   }
 
   /**
@@ -79,7 +105,7 @@ export class ConsoleRenderer {
         if (destX < 0 || destX >= SCREEN_WIDTH) continue;
         const pixel = this.sheet[srcRow + (flipH ? 7 - sx : sx)];
         if (pixel !== TRANSPARENT) {
-          this.frame[destY * SCREEN_WIDTH + destX] = pixel;
+          this.frame[destY * SCREEN_WIDTH + destX] = this.colors[pixel];
         }
       }
     }
@@ -99,8 +125,10 @@ export class ConsoleRenderer {
    * @returns {Uint8ClampedArray} - 128x128 RGBA pixels (view over an internal buffer)
    */
   render(state) {
+    this.updateColors(state.paletteOverrides);
     this.frame.fill(this.paletteColor(state.background));
-    this.renderTilemap(state);
+    if (state.lineScroll) this.renderTilemapLines(state, state.lineScroll);
+    else this.renderTilemap(state);
     this.renderTiles(state);
     this.renderSprites(state);
     this.renderText(state);
@@ -129,6 +157,46 @@ export class ConsoleRenderer {
         const id = map.cells[mapY * map.width + mapX];
         if (id !== 0) {
           this.drawTile(id, tx * 8 - scrollX, ty * 8 - scrollY);
+        }
+      }
+    }
+  }
+
+  /**
+   * Tilemap drawn one scanline at a time, each line offset by its LINE_SCROLL [dx, dy]
+   * (parallax bands, split screens, wavy water). Same pixels as renderTilemap when all are 0.
+   */
+  renderTilemapLines(state, lines) {
+    const map = state.tilemap;
+    if (!map) return;
+    const scroll = state.getTilemapScroll();
+    const scrollX = Math.round(scroll.x);
+    const scrollY = Math.round(scroll.y);
+
+    for (let y = 0; y < SCREEN_HEIGHT; y++) {
+      const lineX = scrollX + lines[y * 2];
+      const lineY = scrollY + lines[y * 2 + 1] + y;
+      let mapY = Math.floor(lineY / 8);
+      const row = lineY - mapY * 8;
+      if (map.wrap) mapY = ((mapY % map.height) + map.height) % map.height;
+      else if (mapY < 0 || mapY >= map.height) continue;
+      const firstX = Math.floor(lineX / 8);
+
+      for (let tx = firstX; tx <= firstX + SCREEN_WIDTH / 8; tx++) {
+        let mapX = tx;
+        if (map.wrap) mapX = ((mapX % map.width) + map.width) % map.width;
+        else if (mapX < 0 || mapX >= map.width) continue;
+        const id = map.cells[mapY * map.width + mapX];
+        if (id === 0) continue;
+        const pos = getSpritePosition(id);
+        if (pos.y >= SHEET_HEIGHT) continue;
+        const srcRow = (pos.y + row) * SHEET_WIDTH + pos.x;
+        const screenX = tx * 8 - lineX;
+        for (let sx = 0; sx < 8; sx++) {
+          const destX = screenX + sx;
+          if (destX < 0 || destX >= SCREEN_WIDTH) continue;
+          const pixel = this.sheet[srcRow + sx];
+          if (pixel !== TRANSPARENT) this.frame[y * SCREEN_WIDTH + destX] = this.colors[pixel];
         }
       }
     }

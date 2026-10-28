@@ -20,7 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createGameGenerationPromptWithSamples, createFixPrompt, parseMarkdownResponse } from '../src/shared/game-prompt-common.js';
+import { createGameGenerationPromptWithSamples, createFixPrompt, createReviewPrompt, parseMarkdownResponse } from '../src/shared/game-prompt-common.js';
 import { HeadlessGameRunner } from '../src/server/headless-game-runner.js';
 
 // Keep in sync with src/server/responses-api.js
@@ -114,7 +114,8 @@ function ensureOutputDir(outputDir) {
 
 
 // Generate game using OpenRouter
-async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir, messages) {
+// allowNoCode: a reply without a code block returns gameDefinition null instead of throwing (screenshot review)
+async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir, messages, allowNoCode = false) {
   log(`Generating game with ${model}...`, 'info', verbose);
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -153,6 +154,7 @@ async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir,
     const gameDefinition = parseMarkdownResponse(rawResponse);
     return { gameDefinition, rawResponse, responseFile };
   } catch (parseError) {
+    if (allowNoCode) return { gameDefinition: null, rawResponse, responseFile };
     // If error happens, dump response to console
     console.log('\n--- RAW RESPONSE BODY ---');
     console.log(rawResponse);
@@ -257,6 +259,29 @@ async function main() {
         messages.push({ role: 'assistant', content: rawResponse }, { role: 'user', content: createFixPrompt(validationErrors[0]) });
         log(`${model} requesting fix ${fixAttempts}/${MAX_FIX_ATTEMPTS}...`, 'info');
       }
+      // Same as the server: show the model screenshots of the working game and keep its revision if it still runs
+      let reviewed = 'skipped';
+      if (validationErrors.length === 0) {
+        const { screenshots } = await runner.smokeTest(gameDefinition.gameCode, { screenshots: true });
+        messages.push({ role: 'assistant', content: rawResponse }, {
+          role: 'user',
+          content: [
+            { type: 'text', text: createReviewPrompt(screenshots.map(s => s.label)) },
+            ...screenshots.map(s => ({ type: 'image_url', image_url: { url: s.dataUri } }))
+          ]
+        });
+        log(`${model} reviewing ${screenshots.length} screenshots...`, 'info');
+        const review = await generateWithOpenRouter(model, options.prompt, openrouterKey, options.verbose, options.output, messages, true);
+        if (!review.gameDefinition) {
+          reviewed = 'looks good';
+        } else if ((await runner.smokeTest(review.gameDefinition.gameCode)).ok) {
+          gameDefinition = review.gameDefinition;
+          reviewed = 'revised';
+        } else {
+          reviewed = 'revision failed to start, kept the first version';
+        }
+        log(`${model} review: ${reviewed}`, 'info');
+      }
       const duration = Date.now() - startTime;
 
       const filepaths = saveGame(gameDefinition, model, options.output, options.prompt, fullPrompt, options.verbose);
@@ -269,6 +294,7 @@ async function main() {
         duration,
         validationErrors,
         fixAttempts,
+        reviewed,
         filepaths: { ...filepaths, responseFile, promptFile },
         gameDefinition
       };
@@ -307,6 +333,7 @@ async function main() {
     if (result.success) {
       console.log(`  Duration: ${result.duration}ms`);
       console.log(`  Starts: ${result.validationErrors.length ? '❌ ' + result.validationErrors[0] : '✅'}${result.fixAttempts ? ` (after ${result.fixAttempts} fix turn(s))` : ''}`);
+      console.log(`  Screenshot review: ${result.reviewed}`);
       console.log(`  Game file: ${result.filepaths.gameFile}`);
       console.log(`  Prompt file: ${result.filepaths.promptFile}`);
     } else {

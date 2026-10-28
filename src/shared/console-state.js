@@ -9,10 +9,11 @@
  * - tiles[]: legacy 128x16 grid, cleared every frame, scrolled by `scroll`
  * - sprites: up to 64 per frame in world pixels, scrolled by `scroll`
  * - text: 16x16 screen grid, cleared every frame, scrolled only by `textScroll`
+ * - memory games also set paletteOverrides (PAL) and lineScroll (LINE_SCROLL, null when all 0)
  *
  * Games that never declare a tilemap or send bg/text get exactly the old tiles[] + sprites behavior.
  */
-import { MAX_SPRITES, MAX_TILES_X, MAX_TILES_Y, getDefaultPalette, REG, OAM_FLIP_H, OAM_FLIP_V, MEMORY_BG_EDITS } from "./game-runner-common.js";
+import { MAX_SPRITES, MAX_TILES_X, MAX_TILES_Y, getDefaultPalette, REG, OAM_FLIP_H, OAM_FLIP_V, MEMORY_BG_EDITS, MEMORY_PALETTE_SIZE, MEMORY_LINES } from "./game-runner-common.js";
 import { BITMAP_FONT, FONT_TILE_BASE } from "./bitmap-font.js";
 import { checkMusic, checkVoice } from "./music.js";
 
@@ -151,6 +152,11 @@ export class ConsoleState {
     this.memoryScroll = { x: 0, y: 0 };
     this.memoryMapScroll = { x: 0, y: 0 };
     this.memoryTextScroll = { x: 0, y: 0 };
+    this.paletteOverrides = null;
+    this.lineScroll = null;
+    this.memoryWords = null; // the Int16Array the views below look into
+    this.paletteView = null;
+    this.lineView = null;
   }
 
   /**
@@ -301,6 +307,18 @@ export class ConsoleState {
     const edits = Math.min(Math.max(words[regs + REG.BG_COUNT], 0), MEMORY_BG_EDITS);
     for (let i = 0; i < edits; i++) {
       this.editTilemap(words[bg + i * 3], words[bg + i * 3 + 1], words[bg + i * 3 + 2]);
+    }
+
+    if (this.memoryWords !== words) {
+      this.memoryWords = words;
+      this.paletteView = words.subarray(offsets.PAL, offsets.PAL + MEMORY_PALETTE_SIZE);
+      this.lineView = words.subarray(offsets.LINE_SCROLL, offsets.LINE_SCROLL + MEMORY_LINES * 2);
+    }
+    this.paletteOverrides = this.paletteView;
+    // The scanline renderer only runs when some line is offset
+    this.lineScroll = null;
+    for (let i = 0; i < MEMORY_LINES * 2; i++) {
+      if (this.lineView[i] !== 0) { this.lineScroll = this.lineView; break; }
     }
   }
 

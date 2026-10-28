@@ -1,5 +1,5 @@
 import { createGameGenerationPrompt, parseMarkdownResponse } from '../shared/game-prompt.js';
-import { createFixPrompt } from '../shared/game-prompt-common.js';
+import { createFixPrompt, createReviewPrompt, REVIEW_OK } from '../shared/game-prompt-common.js';
 import { HeadlessGameRunner } from './headless-game-runner.js';
 
 const INSTRUCTIONS = 'You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
@@ -27,6 +27,23 @@ export class ResponsesAPI {
       model,
       previous_response_id: previousResponseId,
       input: createFixPrompt(failure)
+    });
+  }
+
+  // Continue the conversation with screenshots of the running game so the model can fix how it looks
+  async createReviewResponse(previousResponseId, model, screenshots) {
+    console.log(`Requesting screenshot review for response ${previousResponseId}`);
+
+    return this.submitResponse({
+      model,
+      previous_response_id: previousResponseId,
+      input: [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text: createReviewPrompt(screenshots.map(s => s.label)) },
+          ...screenshots.map(s => ({ type: 'input_image', image_url: s.dataUri }))
+        ]
+      }]
     });
   }
 
@@ -65,7 +82,12 @@ export class ResponsesAPI {
     };
   }
 
-  async getResponse(responseId) {
+  /**
+   * @param {string} responseId
+   * @param {{reviewed?: boolean}} options - reviewed: this is the reply to the screenshot review; a reply
+   *   without a working game means "keep the reviewed game" (keepPrevious) instead of asking for a fix
+   */
+  async getResponse(responseId, { reviewed = false } = {}) {
     console.log(`Checking OpenAI response status: ${responseId}`);
 
     const response = await fetch(`${this.baseURL}/${responseId}`, {
@@ -97,15 +119,21 @@ export class ResponsesAPI {
         try {
           gameDefinition = parseMarkdownResponse(outputText);
         } catch (parseError) {
+          if (reviewed) {
+            console.log(`Review of response ${responseId}: ${outputText.includes(REVIEW_OK) ? 'looks good' : 'no code returned'}`);
+            return { status: 'completed', keepPrevious: true };
+          }
           return { status: 'needs_fix', error: `Could not find the game code in your reply: ${parseError.message}` };
         }
         console.log(`Successfully parsed game definition for response ${responseId}`);
 
-        // Make sure the game actually starts before handing it to the player
-        const smoke = await this.gameRunner.smokeTest(gameDefinition.gameCode);
+        // Make sure the game actually starts before handing it to the player; a first working
+        // version also gets screenshots for the model to review
+        const smoke = await this.gameRunner.smokeTest(gameDefinition.gameCode, { screenshots: !reviewed });
         if (!smoke.ok) {
           const where = smoke.frame === undefined ? 'while loading' : `at frame ${smoke.frame}`;
           console.error(`Response ${responseId} failed smoke test ${where}: ${smoke.error}`);
+          if (reviewed) return { status: 'completed', keepPrevious: true }; // the reviewed game still works
           return { status: 'needs_fix', error: `${smoke.error} (${where})` };
         }
 
@@ -114,6 +142,9 @@ export class ResponsesAPI {
         gameDefinition.metadata = metadata;
         console.log(`Extracted metadata for response ${responseId}:`, metadata?.title);
 
+        if (!reviewed && smoke.screenshots?.length) {
+          return { status: 'needs_review', gameDefinition, screenshots: smoke.screenshots };
+        }
         return {
           status: 'completed',
           gameDefinition

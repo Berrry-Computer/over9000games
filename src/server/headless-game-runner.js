@@ -2,6 +2,8 @@ import { newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
 import releaseVariant from "@jitl/quickjs-singlefile-cjs-release-sync";
 import { QuickJSGameExecutor } from "../shared/game-runner-common.js";
 import { ConsoleState, checkConsoleResources, checkCommands } from "../shared/console-state.js";
+import { ConsoleRenderer } from "../shared/console-renderer.js";
+import { encodePng } from "./screenshot-renderer.js";
 
 const SMOKE_LOAD_BUDGET_MS = 2000;
 const SMOKE_RUN_BUDGET_MS = 5000;
@@ -19,6 +21,13 @@ const SMOKE_SCRIPT = [
   ...Array(20).fill({ b: true }),
   ...Array(20).fill({}),
 ];
+
+// Screenshots for the model to review, taken during the smoke script (the last one at its end or at game over)
+const SMOKE_SHOTS = [
+  { frame: SMOKE_IDLE_FRAMES - 1, label: 'after 1 second with no input (title screen)' },
+  { frame: SMOKE_IDLE_FRAMES + 49, label: 'after pressing A and running right for 0.7 seconds' }
+];
+const SMOKE_SHOT_SCALE = 4; // 512x512 so each console pixel is easy to see
 
 function checkResources(resources) {
   if (!resources || typeof resources !== 'object') {
@@ -112,9 +121,10 @@ export class HeadlessGameRunner {
    * Check that a generated game starts and survives a few seconds of play.
    * Runs scripted input under a CPU deadline so infinite loops can't hang the server.
    * @param {string} gameCode - The game JavaScript code
-   * @returns {{ok: boolean, error?: string, frame?: number}}
+   * @param {{screenshots?: boolean}} options - screenshots: also return PNG data URIs of a few frames
+   * @returns {{ok: boolean, error?: string, frame?: number, screenshots?: {label: string, dataUri: string}[]}}
    */
-  async smokeTest(gameCode) {
+  async smokeTest(gameCode, { screenshots = false } = {}) {
     await this.initialize();
 
     if (this.vm) {
@@ -140,6 +150,16 @@ export class HeadlessGameRunner {
 
       const deltaTime = 1 / 60; // seconds, same unit as the client game loop
       const consoleState = new ConsoleState(loaded.resources);
+      const shots = [];
+      let renderer = null;
+      const shoot = (label) => {
+        if (!renderer) {
+          renderer = new ConsoleRenderer();
+          renderer.loadResources(loaded.resources.sprites, consoleState.palette);
+        }
+        const png = encodePng(renderer.render(consoleState), SMOKE_SHOT_SCALE);
+        shots.push({ label, dataUri: `data:image/png;base64,${png.toString("base64")}` });
+      };
       let prevButtons = {};
       deadline = Date.now() + SMOKE_RUN_BUDGET_MS;
 
@@ -157,6 +177,12 @@ export class HeadlessGameRunner {
           return { ok: false, frame, error: commandError };
         }
         consoleState.apply(state);
+        if (screenshots) {
+          const shot = SMOKE_SHOTS.find(s => s.frame === frame);
+          if (shot) shoot(shot.label);
+          if (state.gameOver === true) shoot('the game over screen');
+          else if (frame === SMOKE_SCRIPT.length - 1) shoot('at the end of 4 seconds of play');
+        }
         if (state.gameOver === true && frame < SMOKE_IDLE_FRAMES) {
           return { ok: false, frame, error: `game reported gameOver after ${frame + 1} frames with no input; the game must wait for the player` };
         }
@@ -166,7 +192,7 @@ export class HeadlessGameRunner {
         }
       }
 
-      return { ok: true };
+      return screenshots ? { ok: true, screenshots: shots } : { ok: true };
     } catch (error) {
       const message = Date.now() > deadline
         ? `timed out (possible infinite loop) ${frame < 0 ? 'while loading' : `at frame ${frame}`}`

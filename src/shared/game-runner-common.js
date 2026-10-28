@@ -36,13 +36,17 @@ export function getDefaultPalette() {
  */
 export const MEMORY_MAGIC = 0x0900;
 export const MEMORY_VERSION = 1;
-export const MEMORY_HEADER_LENGTH = 16;
+export const MEMORY_HEADER_LENGTH = 32; // room for 9 regions
 export const MEMORY_BG_EDITS = 256;
+export const MEMORY_PALETTE_SIZE = 16;
+export const MEMORY_LINES = 128; // one LINE_SCROLL entry per screen scanline
 export const MEMORY_REGIONS = [
   { id: 1, name: 'REGS', length: 16 },        // registers, indexed by REG_* below
   { id: 2, name: 'OAM', length: 64 * 4 },     // [spriteId, x, y, flags] per sprite, spriteId -1 = hidden
   { id: 3, name: 'TEXT', length: 16 * 16 },   // tile id per text cell (font: 0x100 + char code), -1 = empty
-  { id: 4, name: 'BG', length: MEMORY_BG_EDITS * 3 }      // [x, y, tileId] tilemap edits, REGS[REG_BG_COUNT] of them
+  { id: 4, name: 'BG', length: MEMORY_BG_EDITS * 3 },     // [x, y, tileId] tilemap edits, REGS[REG_BG_COUNT] of them
+  { id: 5, name: 'PAL', length: MEMORY_PALETTE_SIZE },    // RGB555 color per palette index, -1 = the resources() color
+  { id: 6, name: 'LINE_SCROLL', length: MEMORY_LINES * 2 } // [dx, dy] added to the tilemap scroll on each scanline
 ];
 export const REG = {
   CAM_X: 0, CAM_Y: 1,                  // scroll for sprites and the tilemap
@@ -59,7 +63,7 @@ export const OAM_FLIP_V = 2;
  * Code run in the VM before the game: defines REGS, OAM, TEXT, BG and the REG_* / OAM_* constants
  * as global properties, so a game declaring its own variable with the same name still loads.
  * __clearFrame runs before every update(): sprites, text and edits are redrawn each frame,
- * registers keep their values.
+ * registers, PAL and LINE_SCROLL keep their values.
  */
 export function memoryPrelude() {
   let offset = MEMORY_HEADER_LENGTH;
@@ -80,6 +84,7 @@ export function memoryPrelude() {
   ${views.join('\n  ')}
   ${constants.join('\n  ')}
   REGS[${REG.TEXT_BG}] = -1;
+  PAL.fill(-1);
   var oam = OAM, text = TEXT, regs = REGS;
   globalThis.__memory = mem;
   globalThis.__clearFrame = function () { oam.fill(-1); text.fill(-1); regs[${REG.BG_COUNT}] = 0; };

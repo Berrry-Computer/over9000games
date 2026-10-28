@@ -363,13 +363,28 @@ router.get("/api/jobs/:jobId", async (req, res) => {
           const { ResponsesAPI } = await import('./responses-api.js');
           const responsesAPI = new ResponsesAPI(apiKey);
 
-          const openaiStatus = await responsesAPI.getResponse(job.openaiResponseId);
+          const openaiStatus = await responsesAPI.getResponse(job.openaiResponseId, { reviewed: job.reviewed === '1' });
+
+          if (openaiStatus.status === 'needs_review') {
+            // The game works: show the model screenshots so it can fix how it looks
+            try {
+              const review = await responsesAPI.createReviewResponse(job.openaiResponseId, job.model, openaiStatus.screenshots);
+              await jobManager.markJobReviewing(jobId, review.id, openaiStatus.gameDefinition);
+              job.openaiResponseId = review.id;
+              job.reviewed = '1';
+              console.log(`Job ${jobId} reviewing screenshots`);
+            } catch (reviewError) {
+              console.error(`Job ${jobId} review request failed, keeping the game:`, reviewError);
+              openaiStatus.status = 'completed';
+            }
+          }
 
           if (openaiStatus.status === 'completed') {
-            // Update job with completed game
-            await jobManager.markJobCompleted(jobId, openaiStatus.gameDefinition);
+            // Update job with completed game (the reviewed version when the review kept it)
+            const gameDefinition = openaiStatus.keepPrevious ? job.reviewedGame : openaiStatus.gameDefinition;
+            await jobManager.markJobCompleted(jobId, gameDefinition);
             job.status = 'completed';
-            job.gameDefinition = openaiStatus.gameDefinition;
+            job.gameDefinition = gameDefinition;
             console.log(`Job ${jobId} completed via client-driven polling`);
           } else if (openaiStatus.status === 'needs_fix') {
             // Game didn't start - ask the model to fix it in the same conversation
@@ -386,6 +401,12 @@ router.get("/api/jobs/:jobId", async (req, res) => {
               job.status = 'failed';
               job.error = error.message;
             }
+          } else if (openaiStatus.status === 'failed' && job.reviewedGame) {
+            // The review itself failed, but the game it was looking at works
+            console.error(`Job ${jobId} review failed (${openaiStatus.error}), keeping the reviewed game`);
+            await jobManager.markJobCompleted(jobId, job.reviewedGame);
+            job.status = 'completed';
+            job.gameDefinition = job.reviewedGame;
           } else if (openaiStatus.status === 'failed') {
             // Update job as failed
             await jobManager.markJobFailed(jobId, new Error(openaiStatus.error));

@@ -27,6 +27,10 @@ const TILE_WALL = 8;
 const TILE_NET_LEFT = 9;  // the 2px net sits across the boundary of two tile columns
 const TILE_NET_RIGHT = 10;
 
+// 0 black, 1 white, 2 red, 3 court (walls and net), 4 paddle flash
+const PALETTE = [0x000000, 0xFFFFFF, 0xFF4040, 0x5A5A7A, 0xFFE040];
+const COURT_COLOR = 3;
+
 // Court on the tilemap: walls on rows 1 and 15, a dashed net down the middle, HUD on row 0
 const COURT = [];
 for (let y = 0; y < 16; y++) {
@@ -82,8 +86,8 @@ function resources() {
       ["00000003", "00000003", "00000003", "00000003", "00000000", "00000000", "00000000", "00000000"],
       ["30000000", "30000000", "30000000", "30000000", "00000000", "00000000", "00000000", "00000000"]
     ],
-    palette: [0x000000, 0xFFFFFF, 0xFF4040, 0x5A5A7A, 0xFFE040],
-    tilemap: { rows: COURT },
+    palette: PALETTE,
+    tilemap: { rows: COURT, wrap: true }, // wraps so the ripple never shifts in an empty edge
     music: SONGS
   };
 }
@@ -129,12 +133,30 @@ const SERVE_DELAY = 0.8;  // ball blinks at the center before a serve
 const POINT_DELAY = 1.0;  // pause after a point
 const END_DELAY = 3.0;    // result screen before the game ends
 
+// After a point the court flashes in the scorer's color (PAL) and ripples (LINE_SCROLL), both fading out
+const PLAYER_COLOR = 0xFFE040;
+const CPU_COLOR = 0xFF4040;
+const RIPPLE_SIZE = 3;      // px at the start of the point pause
+const RIPPLE_SPEED = 20;    // radians per second
+const RIPPLE_WAVE = 0.35;   // radians per screen line
+
 // Leaderboard score: points, plus every return, plus a win bonus
 const POINT_SCORE = 100;
 const RETURN_SCORE = 10;
 const WIN_SCORE = 500;
 
 let gameState;
+
+// PAL takes RGB555: 5 bits per channel
+function rgb(color) {
+  return ((color >> 19) & 31) << 10 | ((color >> 11) & 31) << 5 | ((color >> 3) & 31);
+}
+
+// Blend two 0xRRGGBB colors, t = 0 gives a, 1 gives b
+function mixColor(a, b, t) {
+  const mix = (shift) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t) << shift;
+  return mix(16) | mix(8) | mix(0);
+}
 
 // Drawing helpers over console memory. The console clears OAM and TEXT before every update().
 let spriteCount = 0;
@@ -353,6 +375,21 @@ function update(deltaTime, input) {
   if (!(blinkOff && gameState.lastPointBy === 'player')) print(5, 0, gameState.playerPoints);
   if (!(blinkOff && gameState.lastPointBy === 'cpu')) print(10, 0, gameState.cpuPoints);
   print(12, 0, "CPU");
+
+  // Point pause: flash and ripple the court, settling back by the next serve
+  const fade = gameState.phase === 'point' ? gameState.timer / POINT_DELAY : 0; // 1 right after the point, 0 at the end
+  if (fade > 0) {
+    const scorerColor = gameState.lastPointBy === 'player' ? PLAYER_COLOR : CPU_COLOR;
+    PAL[COURT_COLOR] = rgb(mixColor(PALETTE[COURT_COLOR], scorerColor, fade));
+  } else {
+    PAL[COURT_COLOR] = -1;
+  }
+  for (let line = 0; line < 128; line++) {
+    const inCourt = line >= SPRITE_SIZE; // the HUD row stays still
+    const wave = inCourt ? Math.sin(line * RIPPLE_WAVE - gameState.blink * RIPPLE_SPEED) * RIPPLE_SIZE * fade : 0;
+    LINE_SCROLL[line * 2] = Math.round(wave);          // the net wobbles sideways
+    LINE_SCROLL[line * 2 + 1] = Math.round(wave / 2);  // the walls bend up and down
+  }
 
   let music = 'main';
   if (gameState.phase === 'title') {
