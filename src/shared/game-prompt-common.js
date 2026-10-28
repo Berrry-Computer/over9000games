@@ -38,6 +38,7 @@ function getRequirementsSection() {
   - \`REGS\` registers keep their value until you change them: \`REGS[REG_CAM_X]\`, \`REGS[REG_CAM_Y]\` camera; \`REGS[REG_BG_COLOR]\` palette index behind everything; \`REGS[REG_TEXT_BG]\` solid backing behind text cells (-1 = none); \`REGS[REG_MAP_SCROLL] = 1\` with \`REG_MAP_X\`/\`REG_MAP_Y\` only if the tilemap should scroll differently from the sprites
   - The console clears OAM, TEXT and the BG count before every update(), so draw everything each frame
   - Copy the helpers from the examples: \`spr(id, x, y, flags)\`, \`print(x, y, "SCORE 120")\`, \`tile(x, y, id)\`, \`cam(x, y)\`, and reset \`spriteCount = 0\` at the start of update()
+  - Objects made of several sprites (tall paddles, 2-sprite characters): Math.floor the position ONCE and add the 8px offsets to that, otherwise the pieces can come apart by a pixel
 - **update() returns**: \`{score, gameOver, music, sounds}\` - drawing goes through console memory, not the return value
 - **Screen**: 128x128 pixels (16x16 cells of 8x8). Draw order, back to front: background color, tilemap, sprites, text
 - **Tilemap (levels, mazes, boards)**: declare it once in resources() and the console keeps drawing it every frame

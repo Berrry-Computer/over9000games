@@ -165,13 +165,15 @@ test('song repeats and drum kit', () => {
 });
 
 test('sample game songs keep looping tracks in step', () => {
-  const code = readFileSync(new URL('../src/shared/test-games/platformer.js', import.meta.url), 'utf8');
-  const songs = new Function(`${code}; return SONGS;`)();
-  for (const [name, def] of Object.entries(songs)) {
-    const { song, error } = parseSong(def);
-    assert.equal(error, undefined, `${name}: ${error}`);
-    const lengths = song.tracks.map(t => t.notes.reduce((sum, n) => sum + n.beats, 0));
-    assert.ok(lengths.every(l => l === lengths[0]), `${name} track lengths ${lengths}`);
+  for (const game of ['platformer', 'pong']) {
+    const code = readFileSync(new URL(`../src/shared/test-games/${game}.js`, import.meta.url), 'utf8');
+    const songs = new Function(`${code}; return SONGS;`)();
+    for (const [name, def] of Object.entries(songs)) {
+      const { song, error } = parseSong(def);
+      assert.equal(error, undefined, `${game} ${name}: ${error}`);
+      const lengths = song.tracks.map(t => t.notes.reduce((sum, n) => sum + n.beats, 0));
+      assert.ok(lengths.every(l => l === lengths[0]), `${game} ${name} track lengths ${lengths}`);
+    }
   }
 });
 

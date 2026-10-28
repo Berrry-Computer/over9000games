@@ -503,8 +503,9 @@ function drawEnemies() {
     const facingLeft = enemy.vx < 0;
     const [left, right] = facingLeft ? [SPRITE_SCORPION_BACK, SPRITE_SCORPION_FRONT] : [SPRITE_SCORPION_FRONT, SPRITE_SCORPION_BACK];
     const flags = (facingLeft ? OAM_FLIP_H : 0) | (dying ? OAM_FLIP_V : 0);
-    spr(left, enemy.x, enemy.y, flags);
-    spr(right, enemy.x + SPRITE_SIZE, enemy.y, flags);
+    const x = Math.floor(enemy.x); // round once so the halves stay joined
+    spr(left, x, enemy.y, flags);
+    spr(right, x + SPRITE_SIZE, enemy.y, flags);
   }
   for (const bat of gameState.bats) {
     const dying = bat.health <= 0;
@@ -525,8 +526,9 @@ function drawEnemies() {
 // The explorer: head over a body pose, both flipped to face left
 function drawExplorer(bodySprite, showHead) {
   const flags = gameState.player.facing < 0 ? OAM_FLIP_H : 0;
-  if (showHead) spr(SPRITE_EXPLORER_HEAD, gameState.player.x, gameState.player.y, flags);
-  spr(bodySprite, gameState.player.x, gameState.player.y + SPRITE_SIZE, flags);
+  const y = Math.floor(gameState.player.y); // round once so head and body stay joined
+  if (showHead) spr(SPRITE_EXPLORER_HEAD, gameState.player.x, y, flags);
+  spr(bodySprite, gameState.player.x, y + SPRITE_SIZE, flags);
 }
 
 // Drawing helpers over console memory. The console clears OAM, TEXT and the BG edit count

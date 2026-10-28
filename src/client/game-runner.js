@@ -104,8 +104,8 @@ export class GameRunner {
       'ArrowDown': 'down',
       'ArrowLeft': 'left',
       'ArrowRight': 'right',
-      'KeyZ': 'a',
-      'KeyX': 'b'
+      'KeyZ': 'b',
+      'KeyX': 'a'
     };
 
     buttons.forEach(btn => {
