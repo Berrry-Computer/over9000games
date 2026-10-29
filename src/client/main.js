@@ -1,6 +1,5 @@
 import { navigateTo } from "@devvit/web/client";
 import { getGameRunner } from "./game-runner.js";
-import { getQuickJS } from "quickjs-emscripten";
 import { debugPanel } from "./debug-panel.js";
 
 const titleElement = document.getElementById("title");

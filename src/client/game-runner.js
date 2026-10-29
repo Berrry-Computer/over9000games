@@ -1,4 +1,7 @@
-import { getQuickJS } from "quickjs-emscripten";
+import { newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
+// Only the release-sync build: bundling every variant left several files named emscripten-module.wasm,
+// and a rebuild could hand the loader the wrong one (LinkError: import function must be callable)
+import releaseSyncVariant from "@jitl/quickjs-wasmfile-release-sync";
 import { validateGameSchema, sanitizeGameDefinition } from "../shared/game-schema.js";
 import { renderBitmapText, renderCenteredBitmapText } from "../shared/bitmap-font.js";
 import { AudioManager } from "./audio/audio-manager.js";
@@ -78,7 +81,7 @@ export class GameRunner {
 
     try {
       console.log("Initializing QuickJS game runner...");
-      this.QuickJS = await getQuickJS();
+      this.QuickJS = await newQuickJSWASMModuleFromVariant(releaseSyncVariant);
 
       this.runtime = this.QuickJS.newRuntime()//{ variant: RELEASE_SYNC });
       this.runtime.setModuleLoader((moduleName) => {

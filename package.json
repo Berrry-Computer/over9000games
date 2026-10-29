@@ -26,6 +26,7 @@
   "dependencies": {
     "@devvit/web": "^0.15.0",
     "@jitl/quickjs-singlefile-cjs-release-sync": "^0.31.0",
+    "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
     "devvit": "^0.15.0",
     "express": "5.1.0",
     "pngjs": "^7.0.0",
