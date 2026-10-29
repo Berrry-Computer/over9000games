@@ -503,7 +503,7 @@ function resources() {
     ],
     palette: PALETTE, // a const so fades can compute darker versions of each color
     // Rows can be arrays of tile ids: the level plus backdrop tiles in its empty cells
-    tilemap: { width: 64, height: 48, rows: LEVEL_ROWS.map((row, y) => parseLevelRow(row).map((id, x) => id || backdropTile(x, y))) },
+    tilemap: { width: 64, height: 48, rows: LEVEL_ROWS.map((row, y) => parseLevelRow(row).map((id, x) => id && !SPRITE_TILES.includes(id) ? id : backdropTile(x, y))) },
     music: SONGS
   };
 }
@@ -835,6 +835,13 @@ function parseLevelRow(row) {
   return tiles;
 }
 
+// Tiles with see-through gaps are drawn as sprites so the backdrop shows behind them, not the sky color
+const SPRITE_TILES = [TILE_SPIKES];
+const SPRITE_TILE_CELLS = [];
+LEVEL_ROWS.forEach((row, y) => parseLevelRow(row).forEach((id, x) => {
+  if (SPRITE_TILES.includes(id)) SPRITE_TILE_CELLS.push({ x, y, id });
+}));
+
 // Burning torches on the tomb wall; update() swaps their tiles to make the flames flicker
 const WALL_TORCHES = [4, 14, 26, 36, 46, 54].map(x => ({ x, y: 6 }));
 const TORCH_FLICKER_TIME = 0.18; // seconds per flame frame
@@ -1107,6 +1114,13 @@ function placePlayer(spot) {
 // Coins, the explorer, enemies, torches and the HUD
 function drawWorld() {
   const player = gameState.player;
+  // On-screen spikes first so everything else is drawn over them
+  const camX = gameState.camera.x, camY = gameState.camera.y;
+  for (const cell of SPRITE_TILE_CELLS) {
+    const x = cell.x * TILE_SIZE, y = cell.y * TILE_SIZE;
+    if (x + TILE_SIZE <= camX || x >= camX + SCREEN_WIDTH || y + TILE_SIZE <= camY || y >= camY + SCREEN_HEIGHT) continue;
+    if (gameState.tilemap[cell.y][cell.x] === cell.id) spr(cell.id, x, y);
+  }
   for (const coin of gameState.coins) {
     if (!coin.collected) spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, coin.x / 40), coin.x, coin.y);
   }

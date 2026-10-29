@@ -531,7 +531,9 @@ function startJobPolling(jobId) {
           const progress = jobData.progress || 0;
           const remaining = jobData.estimatedRemaining || '?';
           showGenerationStatus(
-            jobData.fixAttempts
+            jobData.reviewing
+              ? "Game works! Checking how it looks..."
+              : jobData.fixAttempts
               ? `Game didn't start, fixing (try ${jobData.fixAttempts})...`
               : `Generating with ${jobData.model}... ${progress}% • ${remaining}s remaining`,
             "loading"

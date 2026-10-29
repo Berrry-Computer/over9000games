@@ -433,6 +433,7 @@ router.get("/api/jobs/:jobId", async (req, res) => {
     if (job.status === 'in_progress' || job.status === 'polling') {
       response.progress = job.progress;
       response.fixAttempts = parseInt(job.fixAttempts || '0');
+      response.reviewing = job.reviewed === '1';
       response.estimatedRemaining = Math.max(0,
         jobManager.getEstimatedTime(job.model) - Math.floor((Date.now() - parseInt(job.startedAt || job.createdAt)) / 1000)
       );
@@ -484,7 +485,7 @@ router.post("/api/game/test", async (req, res) => {
     const gameCode = getTestGameCode(gameName);
     const testGameDefinition = { gameCode, isPublished: false };
 
-    console.log(`Loaded test game "${gameName}":`, JSON.stringify(testGameDefinition, null, 2));
+    console.log(`Loaded test game "${gameName}" (${gameCode.length} chars)`);
 
     res.json({
       type: "generate",

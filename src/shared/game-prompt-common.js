@@ -52,6 +52,7 @@ function getRequirementsSection() {
 - **Text**: only A-Z, 0-9 and these symbols: ! # % ( ) * + , - . / : ; < = > ? [ ] (others show as blanks; print() uppercases); drawn in palette color 1, so keep palette[1] bright (e.g. white)
 - **Input**: held state in input.up, input.down, input.left, input.right, input.a, input.b; just-pressed-this-frame in input.upPressed, input.downPressed, input.leftPressed, input.rightPressed, input.aPressed, input.bPressed (use these for shooting, menus, rotating pieces)
 - **Design like the best NES games**: a title screen and a clear goal; difficulty that ramps up; danger that is easy to read (hazards contrast with the background); a short flashing invincibility after a hit; fades between screens and areas; lives with checkpoints rather than restarting from the beginning; a sound and a visual reaction (flash, ripple, pop) for every important event
+- **Little text, like NES games**: the screen is only 16 characters wide, so let art and sound do the talking. HUD on ONE row (score, plus lives or health as icons or a short number like "X3"); no speed, height or debug readouts. Title screen: the name, at most two short lines (the goal or the main controls), and "PRESS A", all clear of the art. During play, text only as short banners ("READY", "LEVEL 2", "GAME OVER")
 - **Start**: the game must not end before the player has pressed anything - e.g. show a title with "PRESS A" and start on input.aPressed (see examples)
 - **Scoring**: Always include a score system - return current score as a number in update()
 - **Game Over**: Include win/lose conditions - return gameOver: true when game ends; the console then shows the final score and leaderboard
@@ -155,6 +156,7 @@ Look at the screenshots as a player seeing the game for the first time:
 - Is the title readable and does it say how to start?
 - Can you see and recognize the player, enemies and items, and does the art look like what it is meant to be?
 - Is any text cut off, overlapping or unreadable against what is behind it?
+- Is there too much text? The HUD should fit on one row and the title should be the name, at most two short lines and how to start
 - Is the screen empty, black, garbled, or missing its background or level?
 - Does the HUD show the score (and lives or health if the game has them)?
 - Does it look like a polished NES game?
