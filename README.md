@@ -138,6 +138,13 @@ client polls GET /api/jobs/:id ◄───────────────�
 - `npm run launch`: upload and file a publish request for review
 - `npm run type-check`: TypeScript check
 
+#### Releasing
+1. Update `devvit` and `@devvit/web` when the developer portal says a new Devvit version is out (versions on an old API are flagged in review)
+2. `npx devvit publish` (or `npm run launch`): builds, bumps the version, uploads a source zip and files it for review. It asks interactively about the source upload, so run it in a terminal. The zip honors the root `.gitignore`
+3. Reddit reviews apps that create custom posts and emails when approved; `npx devvit publish --withdraw` withdraws a pending request
+- The app's listing links to [Terms](docs/TERMS.md) and [Privacy Policy](docs/PRIVACY.md), which apps using external HTTP need; keep them in step with what the server stores and sends
+- `assets/icon.png` should be 1024×1024 (currently 256×256, which only warns)
+
 #### Testing
 - `node scripts/test-console.js`: tilemap, text layer, memory regions, palette, line scroll and music sequencer tests
 - `node scripts/golden-frames.js --check scripts/goldens.json src/shared/test-games/`: sample games render the recorded frames (`--record` to update after an intended change)

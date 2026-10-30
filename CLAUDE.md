@@ -214,6 +214,7 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **Audio**: sounds and music notes are dropped while the AudioContext isn't running (a suspended context's clock stands still, so queued notes would all play at once on resume); pausing suspends the context
 - **Text backing**: `REG_TEXT_BG` boxes every text cell including the HUD and persists; samples dim the scene with `PAL` behind title text instead
 - **Testbed**: reads the sample games at startup; restart it after editing them. Client changes need `npm run build:client:testbed`
+- **Releasing**: `devvit publish` asks interactively about the source upload (needs a terminal), zips the repo using the root `.gitignore`, and files the version for review. Keep `devvit`/`@devvit/web` on the latest version, and `docs/TERMS.md`/`docs/PRIVACY.md` (linked from the app listing) accurate to what the server stores and sends to OpenAI
 - **Sample size**: both samples are pasted into every generation prompt (platformer ~80KB), so keep them lean
 
 ### Debugging Tips
