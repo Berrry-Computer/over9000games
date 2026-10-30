@@ -24,10 +24,10 @@
     "dev:client:testbed": "cd src/client && vite build --config vite.config.testbed.ts --watch"
   },
   "dependencies": {
-    "@devvit/web": "^0.15.0",
+    "@devvit/web": "^0.15.1",
     "@jitl/quickjs-singlefile-cjs-release-sync": "^0.31.0",
     "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
-    "devvit": "^0.15.0",
+    "devvit": "^0.15.1",
     "express": "5.1.0",
     "pngjs": "^7.0.0",
     "quickjs-emscripten": "^0.31.0",
