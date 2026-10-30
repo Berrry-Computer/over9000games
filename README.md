@@ -179,7 +179,7 @@ client polls GET /api/jobs/:id ◄───────────────�
 
 ## Security & Sandboxing
 - Generated code runs only inside QuickJS (WebAssembly): no DOM, network or file access
-- The server's smoke test interrupts a game that runs past its time budget; the client sets no memory or time limits yet, so a game stuck in a loop freezes its tab
+- Time budgets: the client stops a game whose loading takes over 2s or whose `update()` call takes over 250ms (a stuck loop shows "Game crashed" instead of freezing the tab); the server's smoke test uses the same mechanism. No memory limit is set
 - Resources (sprites, palette, tilemap, music) are validated before a game runs; errors name the bad sprite or row
 - The client bundles only the release-sync QuickJS build; the server uses the single-file build of the same variant
 

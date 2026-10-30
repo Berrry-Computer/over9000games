@@ -202,7 +202,7 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **Color Palette**: Maximum 16 colors per game (4-bit)
 - **Audio Slots**: 8 sound slots, 4 channels (pulse1, pulse2, triangle, noise)
 - **Audio Features**: Sound IDs prevent restart, envelope presets (sharp/soft/fade/sustain), pulse `duty`, noise `period` 0-15 and modes (random/periodic), per-frame `arp`/`vol` macros, `vibrato`, exponential sweeps, `loop`; songs take the same voice options per track, `[ ... ]xN` repeats, and a K/S/H/O drum kit on noise tracks. Noise without `period` keeps the old generator so older games sound the same
-- **QuickJS Sandbox**: No external dependencies, limited execution time
+- **QuickJS Sandbox**: No external dependencies; the client interrupts loading after 2s and any `update()` call after 250ms (`LOAD_BUDGET_MS`/`UPDATE_BUDGET_MS` in `game-runner.js`) and stops the game
 - **Console Memory**: games with `metadata().memory = 1` draw by writing global Int16Arrays (`OAM`, `TEXT`, `BG`, `REGS`, `PAL` RGB555 palette overrides, `LINE_SCROLL` per-scanline tilemap offsets for parallax/raster effects; layout in `MEMORY_REGIONS` in `game-runner-common.js`) and return only score/sounds/music; the buffer header lists each region's id, offset and length so regions can be added. Helpers like `spr()`/`print()` live in the sample games, not the console. Games without `memory` return state objects (JSON) and render exactly as before
 - **State-Based Rendering**: no direct canvas access
 - **Camera System**: `scroll` moves sprites and the tilemap in both directions; `bgScroll` overrides the tilemap scroll; `textScroll` offsets the text layer

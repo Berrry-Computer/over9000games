@@ -2,8 +2,36 @@ import { newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
 // Only the release-sync build: bundling every variant left several files named emscripten-module.wasm,
 // and a rebuild could hand the loader the wrong one (LinkError: import function must be callable)
 import releaseSyncVariant from "@jitl/quickjs-wasmfile-release-sync";
+
+// A generated game stuck in a loop would freeze the tab; QuickJS stops it once a call runs past its budget
+const LOAD_BUDGET_MS = 2000;   // top-level code and resources()
+const UPDATE_BUDGET_MS = 250;  // one update() call; normal frames take a few ms
+
+const MESSAGE_WIDTH = 116; // pixels inside the message box border
+const MESSAGE_BOTTOM = 112;
+
+// Split text into lines that fit `width` pixels, breaking at spaces (and inside words longer than a line)
+function wrapBitmapText(text, width) {
+  const lines = [];
+  for (const paragraph of String(text).split('\n')) {
+    let line = '';
+    for (let word of paragraph.split(' ')) {
+      while (measureBitmapText(word) > width) {
+        let cut = word.length - 1;
+        while (cut > 1 && measureBitmapText(word.slice(0, cut)) > width) cut--;
+        if (line) { lines.push(line); line = ''; }
+        lines.push(word.slice(0, cut));
+        word = word.slice(cut);
+      }
+      const next = line ? line + ' ' + word : word;
+      if (measureBitmapText(next) > width && line) { lines.push(line); line = word; } else line = next;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
 import { validateGameSchema, sanitizeGameDefinition } from "../shared/game-schema.js";
-import { renderBitmapText, renderCenteredBitmapText } from "../shared/bitmap-font.js";
+import { renderBitmapText, renderCenteredBitmapText, measureBitmapText } from "../shared/bitmap-font.js";
 import { AudioManager } from "./audio/audio-manager.js";
 import { QuickJSGameExecutor, getDefaultPalette } from "../shared/game-runner-common.js";
 import { ConsoleState } from "../shared/console-state.js";
@@ -84,6 +112,13 @@ export class GameRunner {
       this.QuickJS = await newQuickJSWASMModuleFromVariant(releaseSyncVariant);
 
       this.runtime = this.QuickJS.newRuntime()//{ variant: RELEASE_SYNC });
+      this.deadline = 0;
+      this.interrupted = false;
+      this.runtime.setInterruptHandler(() => {
+        if (!this.deadline || performance.now() <= this.deadline) return false;
+        this.interrupted = true;
+        return true;
+      });
       this.runtime.setModuleLoader((moduleName) => {
         console.log("Module loader called for:", moduleName);
         return "";
@@ -330,7 +365,17 @@ export class GameRunner {
     this.gameCode = gameCode;
 
     // Use shared executor to load game code
-    const { metadata, resources, updateHandle } = this.executor.loadGameCode(gameCode);
+    let loaded;
+    try {
+      this.startBudget(LOAD_BUDGET_MS);
+      loaded = this.executor.loadGameCode(gameCode);
+    } catch (error) {
+      if (this.interrupted) throw new Error(`Game took longer than ${LOAD_BUDGET_MS / 1000}s to load (stuck in a loop?)`);
+      throw error;
+    } finally {
+      this.endBudget();
+    }
+    const { metadata, resources, updateHandle } = loaded;
     this.updateFunction = updateHandle;
 
     this.loadGame({
@@ -639,14 +684,28 @@ export class GameRunner {
       const inputState = this.getInputState();
 
       // Use shared executor's callUpdate method
+      this.startBudget(UPDATE_BUDGET_MS);
       const commands = this.executor.callUpdate(this.updateFunction, deltaTime, inputState);
 
       return commands;
 
     } catch (error) {
+      // A stuck update() would hit the budget again every frame, so stop the game instead
+      if (this.interrupted) throw new Error(`update() ran longer than ${UPDATE_BUDGET_MS}ms (stuck in a loop?)`);
       console.error("Failed to execute game update:", error);
       return {};
+    } finally {
+      this.endBudget();
     }
+  }
+
+  startBudget(ms) {
+    this.interrupted = false;
+    this.deadline = performance.now() + ms;
+  }
+
+  endBudget() {
+    this.deadline = 0;
   }
 
   getInputState() {
@@ -804,9 +863,9 @@ export class GameRunner {
       yPos += 20;
     }
 
-    // Message text (split into lines if needed)
-    const lines = this.displayMessage.split('\n');
-    for (const line of lines) {
+    // Message text, word-wrapped to the box; whatever doesn't fit is cut at the bottom border
+    for (const line of wrapBitmapText(this.displayMessage, MESSAGE_WIDTH)) {
+      if (yPos > MESSAGE_BOTTOM) break;
       renderCenteredBitmapText(this.ctx, line, centerX, yPos, '#ffffff', 1);
       yPos += 12;
     }
