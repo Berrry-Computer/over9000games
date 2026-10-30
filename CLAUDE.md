@@ -70,13 +70,13 @@ This is a Devvit web application that implements a retro NES-style game console 
 4. Client polls `GET /api/jobs/:jobId` for status updates
 5. On first poll, server starts OpenAI Responses API request
 6. Subsequent polls check OpenAI completion status
-7. When complete, game code returned to client
-8. Response parsed by `src/shared/game-prompt.js` (markdown → JSON + JavaScript)
-9. Game validated using `src/shared/game-schema.js`
-10. QuickJS loads and executes game in client sandbox
+7. When the model answers, the response is parsed by `src/shared/game-prompt.js` (markdown → JSON + JavaScript)
+8. Smoke test: `HeadlessGameRunner.smokeTest()` runs the game with scripted input; if it fails to start, the error goes back to the model as a fix request (`MAX_FIX_ATTEMPTS`)
+9. Screenshot review: once it runs, 3 screenshots (title, play, end; 512×512) go back to the model (`createReviewPrompt`), which replies `LOOKS GOOD` or returns a fixed game; a revision that fails the smoke test, or a failed review call, keeps the reviewed game (`reviewedGame` on the job). Polls report `reviewing: true` meanwhile
+10. When complete, game code returned to client and loaded into the QuickJS sandbox
 
 ### QuickJS Game Execution
-Games must export three functions:
+New games set `metadata().memory = 1` and draw through console memory (see Console Memory below); the sample games in `src/shared/test-games/` show the current style and are part of the generation prompt. Older games use the JSON state format below, which still works:
 ```javascript
 function metadata() {
   return { title: "Game Title", description: "...", controls: [...] };
@@ -192,7 +192,7 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **Testbed**: `src/testbed/` - Local testing environment with Devvit mocks
 - **Generation Testing**: `scripts/test-generation.js` - AI model testing script
 - **Golden Frames**: `scripts/golden-frames.js` - Checks old games still render pixel-identical to the original client (`--check scripts/goldens.json` for the examples)
-- **Console Tests**: `scripts/test-console.js` - Tilemap, text layer and music sequencer checks
+- **Console Tests**: `scripts/test-console.js` - Tilemap, text layer, memory regions, PAL, LINE_SCROLL and music sequencer checks
 
 ### Game Development Constraints
 - **Sprite Limits**: Maximum 64 sprites on screen, 8×8 pixels each, cleared each frame
@@ -207,6 +207,14 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **State-Based Rendering**: no direct canvas access
 - **Camera System**: `scroll` moves sprites and the tilemap in both directions; `bgScroll` overrides the tilemap scroll; `textScroll` offsets the text layer
 - **Lives System**: If implementing lives, trigger game over when lives reach 0 (not below 0) to avoid stuck states where player can't respawn
+
+### Gotchas
+- **Keys**: X = A button, Z = B button (Space pause, Enter restart, Esc close menu)
+- **QuickJS build**: the client imports only `@jitl/quickjs-wasmfile-release-sync` (via `quickjs-emscripten-core`); `getQuickJS()` bundles all four variants, each named `emscripten-module.wasm`, and a rebuild can then serve the wrong one ("LinkError: import function must be callable"). The server uses `@jitl/quickjs-singlefile-cjs-release-sync`
+- **Audio**: sounds and music notes are dropped while the AudioContext isn't running (a suspended context's clock stands still, so queued notes would all play at once on resume); pausing suspends the context
+- **Text backing**: `REG_TEXT_BG` boxes every text cell including the HUD and persists; samples dim the scene with `PAL` behind title text instead
+- **Testbed**: reads the sample games at startup; restart it after editing them. Client changes need `npm run build:client:testbed`
+- **Sample size**: both samples are pasted into every generation prompt (platformer ~80KB), so keep them lean
 
 ### Debugging Tips
 - Use browser dev tools to debug QuickJS execution errors

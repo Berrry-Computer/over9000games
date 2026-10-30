@@ -9,7 +9,9 @@ RES-9000 is a **NES-style game console** that runs directly in Reddit posts. Use
 - Play authentic 8-bit games with 128×128 pixel displays
 - Compete on leaderboards with other Reddit users
 - Experience classic gaming with modern web technology
-- Enjoy 4-channel NES-style audio and side-scrolling worlds
+- Enjoy 4-channel NES-style audio with real songs (melody, arpeggios, bass and drums) and worlds that scroll in every direction
+- Get games that check themselves: the server plays each generated game, sends errors back to the AI to fix, then shows it screenshots so it can fix how the game looks
+- See NES-era tricks: palette fades and flashes, color cycling, and parallax from per-scanline scrolling
 
 ## How I built it
 

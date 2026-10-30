@@ -88,7 +88,6 @@ export class ResponsesAPI {
    *   without a working game means "keep the reviewed game" (keepPrevious) instead of asking for a fix
    */
   async getResponse(responseId, { reviewed = false } = {}) {
-    console.log(`Checking OpenAI response status: ${responseId}`);
 
     const response = await fetch(`${this.baseURL}/${responseId}`, {
       method: 'GET',
@@ -104,9 +103,7 @@ export class ResponsesAPI {
 
     const data = await response.json();
 
-    console.log(`OpenAI response ${responseId} status: ${data.status}`,
-      data.status === 'completed' ? '(has output)' : '',
-      'Full response keys:', Object.keys(data));
+    console.log(`OpenAI response ${responseId} status: ${data.status}`);
 
     // Handle completed response
     if (data.status === 'completed' || data.status === 'complete') {
