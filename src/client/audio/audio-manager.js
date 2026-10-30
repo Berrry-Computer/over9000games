@@ -387,6 +387,19 @@ export class AudioManager {
     }
   }
 
+  // While the context is suspended or interrupted its clock stands still, so every note started then
+  // would wait at the same instant and all play at once on resume. Drop them instead.
+  get running() {
+    return this.ctx?.state === 'running';
+  }
+
+  // Freeze audio while the game is paused; notes in flight continue from where they were on resume
+  suspend() {
+    if (this.running) {
+      this.ctx.suspend().catch(err => console.warn("Audio suspend failed:", err));
+    }
+  }
+
   /**
    * Synchronous one-time resume attempt for user gesture handlers.
    * Call this directly in touch/click event handlers to satisfy Safari's autoplay policy.
@@ -446,7 +459,7 @@ export class AudioManager {
   }
 
   processCommands(commands) {
-    if (!this.initialized || !this.ctx) return;
+    if (!this.initialized || !this.running) return;
 
     const slotCommands = new Map();
 
@@ -559,7 +572,7 @@ export class AudioManager {
    * Play one note from the music sequencer; music doesn't use the 8 sound effect slots
    */
   playMusicNote(note) {
-    if (!this.initialized || !this.ctx) return;
+    if (!this.initialized || !this.running) return;
 
     let nodes;
     try {

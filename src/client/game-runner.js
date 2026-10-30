@@ -435,6 +435,7 @@ export class GameRunner {
 
   pauseGame(showLeaderboard = true) {
     this.state.gameState = GameState.PAUSED;
+    this.audioManager.suspend();
     if (showLeaderboard) {
       this.showLeaderboardLoading();
     }
@@ -442,6 +443,8 @@ export class GameRunner {
 
   resumeGame() {
     this.state.gameState = GameState.RUNNING;
+    this.lastFrameTime = 0; // the first frame after the pause gets dt 0, not the whole pause
+    this.audioManager.tryResume();
     this.hideLeaderboard();
     // Game loop should already be running when paused, so no need to restart it
   }
