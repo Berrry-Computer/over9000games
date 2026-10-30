@@ -550,6 +550,8 @@ const CLOUD_PERIOD = 128;  // the cloud rows repeat every 16 tiles, so their scr
 const FADE_TIME = 0.4;     // seconds to fade out, and again to fade back in
 const FADE_HOLD = 0.15;    // seconds of black in between (the level changes here)
 const FADE_STEPS = 4;
+const TEXT_COLOR = 1;  // the console draws text in palette color 1
+const TEXT_DIM = 0.45; // scene brightness behind title and level-clear text
 const TOMB_WALL_HIGHLIGHT = 4; // palette index swapped for the desert's sand haze
 const SAND_HAZE = 0xF0DCAC;
 const CRYSTAL_COLOR = 0xb; // only the cavern crystals use it: PAL cycles it to make them shimmer
@@ -1047,13 +1049,14 @@ function rgb(color) {
 }
 
 // 1 = the normal palette, 0 = black; PAL keeps whatever was written last, so -1 hands colors back
-function fadePalette(brightness) {
+function fadePalette(brightness, textBrightness = brightness) {
   // The desert never shows the tomb wall, so its color 4 becomes the pale sand haze behind the explorer
   const desert = gameState.area === 'desert';
   if (brightness >= 1) { PAL.fill(-1); if (desert) PAL[TOMB_WALL_HIGHLIGHT] = rgb(SAND_HAZE); return; }
   for (let i = 0; i < 16; i++) {
     const c = desert && i === TOMB_WALL_HIGHLIGHT ? SAND_HAZE : PALETTE[i];
-    const scale = (shift) => Math.floor(((c >> shift) & 255) * brightness) << shift;
+    const level = i === TEXT_COLOR ? textBrightness : brightness; // text keeps its own brightness over a dimmed scene
+    const scale = (shift) => Math.floor(((c >> shift) & 255) * level) << shift;
     PAL[i] = rgb(scale(16) | scale(8) | scale(0));
   }
 }
@@ -1077,8 +1080,8 @@ function updateTransition(dt) {
   return Math.round(brightness * FADE_STEPS) / FADE_STEPS;
 }
 
-// Camera, parallax and palette for this frame
-function present(brightness) {
+// Camera, parallax and palette for this frame; `dimForText` darkens the scene behind title/clear text
+function present(brightness, dimForText) {
   const camX = Math.floor(gameState.camera.x);
   cam(camX, gameState.camera.y);
   // In the desert the sky bands scroll slower than the ground; the tomb has no bands
@@ -1092,8 +1095,8 @@ function present(brightness) {
     }
     LINE_SCROLL[line * 2] = dx;
   }
-  fadePalette(brightness);
-  if (brightness >= 1 && gameState.inCavern) {
+  fadePalette(dimForText ? brightness * TEXT_DIM : brightness, brightness);
+  if (brightness >= 1 && !dimForText && gameState.inCavern) {
     PAL[CRYSTAL_COLOR] = rgb(CRYSTAL_SHADES[Math.floor(gameState.animTime / CRYSTAL_SHIMMER_TIME) % CRYSTAL_SHADES.length]);
   }
   REGS[REG_BG_COLOR] = gameState.area === 'desert' ? 0xb : 0;
@@ -1154,7 +1157,6 @@ function drawWorld() {
 
 function update(deltaTime, input) {
   spriteCount = 0;
-  REGS[REG_TEXT_BG] = -1; // no backing behind text unless a screen asks for it
 
   // Initialize game state
   if (!gameState) {
@@ -1270,12 +1272,11 @@ function update(deltaTime, input) {
     if (input.aPressed) {
       gameState.started = true;
     }
-    // Text layer over the level, with a black backing so it stays readable
+    // Text over the level: the scene is dimmed so the white letters stand out without boxes
     print(1, 5, "TOMB EXPLORER");
     print(4, 9, "PRESS A");
-    REGS[REG_TEXT_BG] = 0;
     spr(animFrame(COIN_SPIN, COIN_FRAME_TIME, 0), 60, DESERT_TOP + 56);
-    present(brightness);
+    present(brightness, true);
     return { score: 0, gameOver: false };
   }
 
@@ -1355,9 +1356,8 @@ function update(deltaTime, input) {
       print(2, 6, "LEVEL CLEAR!");
       const scoreLine = "SCORE " + gameState.score;
       print(Math.floor((16 - scoreLine.length) / 2), 8, scoreLine);
-      REGS[REG_TEXT_BG] = 0;
     }
-    present(brightness);
+    present(brightness, gameState.levelComplete);
 
     return {
       music: gameState.levelComplete ? 'win' : 'death',
