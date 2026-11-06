@@ -205,6 +205,65 @@ export class HeadlessGameRunner {
   }
 
   /**
+   * Play the smoke script and return the gameplay frame with the least text
+   * (so the post image shows play, not the title or a "GET READY" banner).
+   * @param {string} gameCode - The game JavaScript code
+   * @returns {Promise<Uint8ClampedArray|null>} - 128x128 RGBA pixels, or null if no frame after pressing A
+   */
+  async renderPlayFrame(gameCode) {
+    await this.initialize();
+
+    if (this.vm) {
+      this.vm.dispose();
+    }
+    this.vm = this.runtime.newContext();
+    this.executor = new QuickJSGameExecutor(this.vm, this.QuickJS);
+
+    let updateHandle = null;
+    let deadline = Date.now() + SMOKE_LOAD_BUDGET_MS;
+    this.runtime.setInterruptHandler(() => Date.now() > deadline);
+
+    try {
+      const loaded = this.executor.loadGameCode(gameCode);
+      updateHandle = loaded.updateHandle;
+
+      const deltaTime = 1 / 60; // seconds, same unit as the client game loop
+      const consoleState = new ConsoleState(loaded.resources);
+      const renderer = new ConsoleRenderer();
+      let best = null;
+      let bestScore = Infinity;
+      let prevButtons = {};
+      deadline = Date.now() + SMOKE_RUN_BUDGET_MS;
+
+      for (let frame = 0; frame < SMOKE_SCRIPT.length; frame++) {
+        const buttons = SMOKE_SCRIPT[frame];
+        const state = this.executor.callUpdate(updateHandle, deltaTime, QuickJSGameExecutor.createInputState(buttons, prevButtons));
+        prevButtons = buttons;
+        if (!state || typeof state !== 'object' || state.gameOver === true) break;
+        consoleState.apply(state);
+        // Skip the title screen and the frames right after pressing start
+        if (frame < SMOKE_IDLE_FRAMES + 20) continue;
+
+        // Fewest text cells wins; ties go to the frame with more sprites, then the later one
+        const { textCount, spriteCount } = consoleState.getStats();
+        const score = textCount * 100 - spriteCount;
+        if (score <= bestScore) {
+          bestScore = score;
+          renderer.loadResources(loaded.resources.sprites, consoleState.palette);
+          best = renderer.render(consoleState).slice();
+        }
+      }
+      return best;
+    } catch (error) {
+      console.error("HeadlessGameRunner renderPlayFrame error:", error.message);
+      return null;
+    } finally {
+      this.runtime.removeInterruptHandler();
+      if (updateHandle) updateHandle.dispose();
+    }
+  }
+
+  /**
    * Extract metadata from game code without running frames
    * @param {string} gameCode - The game JavaScript code
    * @returns {Object} - { title, description, controls }

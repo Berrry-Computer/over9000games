@@ -48,9 +48,9 @@ export class ScreenshotRenderer {
 }
 
 /**
- * Convenience function to generate screenshot from game code
+ * Generate a post screenshot from game code: a gameplay frame after pressing A
  * @param {string} gameCode - The game JavaScript code
- * @param {number} frames - Number of frames to simulate
+ * @param {number} frames - Idle frames for the title-screen fallback
  * @returns {Promise<string>} - PNG as data URI
  */
 export async function generateScreenshot(gameCode, frames = 60) {
@@ -60,6 +60,11 @@ export async function generateScreenshot(gameCode, frames = 60) {
   const renderer = new ScreenshotRenderer();
 
   try {
+    const playFrame = await runner.renderPlayFrame(gameCode);
+    if (playFrame) {
+      return `data:image/png;base64,${encodePng(playFrame).toString("base64")}`;
+    }
+    // Game ended or failed before play started: fall back to the title screen
     const gameState = await runner.runGame(gameCode, frames);
     return renderer.render(gameState);
   } finally {
