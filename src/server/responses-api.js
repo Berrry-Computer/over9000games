@@ -2,7 +2,10 @@ import { createGameGenerationPrompt, parseMarkdownResponse } from '../shared/gam
 import { createFixPrompt, createReviewPrompt, REVIEW_OK } from '../shared/game-prompt-common.js';
 import { HeadlessGameRunner } from './headless-game-runner.js';
 
-const INSTRUCTIONS = 'You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
+// Shown to players instead of OpenAI's quota/rate-limit details (billing links etc.)
+const AI_UNAVAILABLE = 'The AI service is busy or out of credits right now. Please try again later.';
+
+const INSTRUCTIONS ='You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
 
 export class ResponsesAPI {
   constructor(apiKey) {
@@ -68,6 +71,10 @@ export class ResponsesAPI {
 
     if (!response.ok) {
       const errorText = await response.text();
+      if (response.status === 429) {
+        console.error(`OpenAI Responses API error: 429 - ${errorText}`);
+        throw new Error(AI_UNAVAILABLE);
+      }
       throw new Error(`OpenAI Responses API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
@@ -158,8 +165,13 @@ export class ResponsesAPI {
 
     // Handle failed response
     if (data.status === 'failed') {
-      const errorMessage = data.error || 'Unknown error from OpenAI';
-      console.error(`OpenAI response ${responseId} failed:`, errorMessage);
+      // data.error is an object ({type, code, message}); players see a string
+      console.error(`OpenAI response ${responseId} failed:`, data.error);
+      const { type, code, message } = data.error || {};
+      let errorMessage = message || 'Unknown error from OpenAI';
+      if (type === 'insufficient_quota' || code === 'rate_limit_exceeded') {
+        errorMessage = AI_UNAVAILABLE;
+      }
 
       return {
         status: 'failed',
