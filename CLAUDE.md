@@ -71,9 +71,10 @@ This is a Devvit web application that implements a retro NES-style game console 
 5. On first poll, server starts OpenAI Responses API request
 6. Subsequent polls check OpenAI completion status
 7. When the model answers, the response is parsed by `src/shared/game-prompt.js` (markdown → JSON + JavaScript)
-8. Smoke test: `HeadlessGameRunner.smokeTest()` runs the game with scripted input; if it fails to start, the error goes back to the model as a fix request (`MAX_FIX_ATTEMPTS`)
-9. Screenshot review: once it runs, 3 screenshots (title, play, end; 512×512) go back to the model (`createReviewPrompt`), which replies `LOOKS GOOD` or returns a fixed game; a revision that fails the smoke test, or a failed review call, keeps the reviewed game (`reviewedGame` on the job). Polls report `reviewing: true` meanwhile
-10. When complete, game code returned to client and loaded into the QuickJS sandbox
+8. Code tools: edits, fixes and reviews change the game by calling `replace_code`/`view_code`/`search_code`/`write_code` (`src/shared/code-tools.js`) instead of writing it again; only new games come back as a full ```javascript block. Each poll that finds tool calls applies them to `workingCode` on the job and sends the results back (`submitToolOutputs`, up to `MAX_TOOL_ROUNDS`). Only the poll that claims a finished response (`jobManager.claimResponse`) acts on it, so overlapping polls can't apply edits twice or start a job twice. Edit prompts don't paste the sample games: the tools can read them as `pong.js`/`platformer.js` (`SAMPLE_FILES` in `game-prompt.js`) and the prompt lists their functions (`outlineCode`). The game being edited is `game.js`; above `FULL_GAME_MAX_CHARS` it gets an outline too and the model reads it with the tools, so edits don't grow the prompt
+9. Smoke test: `HeadlessGameRunner.smokeTest()` runs the game with scripted input; if it fails to start, the error goes back to the model as a fix request (`MAX_FIX_ATTEMPTS`)
+10. Screenshot review: once it runs, 3 screenshots (title, play, end; 512×512) go back to the model (`createReviewPrompt`), which replies `LOOKS GOOD` or fixes the game with the code tools; a revision that fails the smoke test, or a failed review call, keeps the reviewed game (`reviewedGame` on the job). Polls report `reviewing: true` meanwhile
+11. When complete, game code returned to client and loaded into the QuickJS sandbox
 
 ### QuickJS Game Execution
 New games set `metadata().memory = 1` and draw through console memory (see Console Memory below); the sample games in `src/shared/test-games/` show the current style and are part of the generation prompt. Older games use the JSON state format below, which still works:
@@ -190,9 +191,10 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **Post Management**: `src/server/core/post.js` - Reddit post creation and management
 - **Test Games**: `src/shared/test-games/` - Manual test games for development (pong.js, platformer.js)
 - **Testbed**: `src/testbed/` - Local testing environment with Devvit mocks
-- **Generation Testing**: `scripts/test-generation.js` - AI model testing script
+- **Generation Testing**: `scripts/test-generation.js` - AI model testing script (`--edit game.js --prompt "change"` tests edits with the code tools)
 - **Golden Frames**: `scripts/golden-frames.js` - Checks old games still render pixel-identical to the original client (`--check scripts/goldens.json` for the examples)
 - **Console Tests**: `scripts/test-console.js` - Tilemap, text layer, memory regions, PAL, LINE_SCROLL and music sequencer checks
+- **Code Tools**: `src/shared/code-tools.js` - Tools the model edits games with, shared by the server and `test-generation.js`; tests in `scripts/test-code-tools.js`
 
 ### Game Development Constraints
 - **Sprite Limits**: Maximum 64 sprites on screen, 8×8 pixels each, cleared each frame
@@ -215,7 +217,7 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 - **Text backing**: `REG_TEXT_BG` boxes every text cell including the HUD and persists; samples dim the scene with `PAL` behind title text instead
 - **Testbed**: reads the sample games at startup; restart it after editing them. Client changes need `npm run build:client:testbed`
 - **Releasing**: `devvit publish` asks interactively about the source upload (needs a terminal), zips the repo using the root `.gitignore`, and files the version for review. Keep `devvit`/`@devvit/web` on the latest version, and `docs/TERMS.md`/`docs/PRIVACY.md` (linked from the app listing) accurate to what the server stores and sends to OpenAI
-- **Sample size**: both samples are pasted into every generation prompt (platformer ~80KB), so keep them lean
+- **Sample size**: both samples are pasted into every new-game prompt (platformer ~80KB), so keep them lean; edits read them with the code tools instead
 
 ### Debugging Tips
 - Use browser dev tools to debug QuickJS execution errors

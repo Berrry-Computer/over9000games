@@ -117,8 +117,8 @@ export function readMemoryLayout(words) {
  * @returns {string} - Wrapped game code with doUpdate() function
  */
 export function wrapGameCode(gameCode) {
-  return `
-${gameCode}
+  // Game code starts on line 1 so error line numbers match the game's own lines
+  return `${gameCode}
 
 function doUpdate(deltaTime, input) {
   try {
@@ -186,8 +186,13 @@ export class QuickJSGameExecutor {
     // Evaluate code
     const result = this.vm.evalCode(wrappedCode, "game.js");
     if (result.error) {
-      const errorMsg = this.vm.dump(this.vm.unwrapResult ? this.vm.unwrapResult(result.error) : result.error);
+      // e.g. {name: 'SyntaxError', message: "unexpected token in expression: ','", stack: '    at game.js:4:23\n'}
+      const error = this.vm.dump(result.error);
       result.dispose();
+      const where = typeof error?.stack === 'string' ? error.stack.trim().split('\n')[0] : '';
+      const errorMsg = error && typeof error === 'object'
+        ? `${error.name || 'Error'}: ${error.message}${where ? ` (${where.replace(/^at /, '')})` : ''}`
+        : String(error);
       throw new Error(`Failed to load game code: ${errorMsg}`);
     }
     result.dispose();

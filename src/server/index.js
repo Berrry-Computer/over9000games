@@ -13,6 +13,8 @@ import { JobManager } from "./job-manager.js";
 import { DraftManager } from "./draft-manager.js";
 import { getTestGameCode, getAvailableTestGames } from "../shared/test-games/server-loader.js";
 import { generateScreenshot } from "./screenshot-renderer.js";
+import { runCodeTools, MAX_TOOL_ROUNDS } from "../shared/code-tools.js";
+import { SAMPLE_FILES } from "../shared/game-prompt.js";
 
 const app = express();
 
@@ -24,6 +26,8 @@ const draftManager = new DraftManager(redis);
 
 // Follow-up turns allowed when a generated game fails to start
 const MAX_FIX_ATTEMPTS = 2;
+// getResponse() results that move a job on (anything else means OpenAI is still working)
+const FINISHED_STATUSES = ['tool_calls', 'needs_review', 'needs_fix', 'completed', 'failed'];
 
 
 // Middleware for JSON body parsing
@@ -321,8 +325,8 @@ router.get("/api/jobs/:jobId", async (req, res) => {
       return;
     }
 
-    // If job is queued, start the OpenAI background request
-    if (job.status === 'queued') {
+    // If job is queued, start the OpenAI background request (once, even if polls overlap)
+    if (job.status === 'queued' && await jobManager.claimResponse(jobId, 'start')) {
       try {
         const apiKey = await settings.get('openAIKey');
         if (!apiKey) {
@@ -334,16 +338,15 @@ router.get("/api/jobs/:jobId", async (req, res) => {
           const responsesAPI = new ResponsesAPI(apiKey);
 
           // Start the background request
-          const response = await responsesAPI.createResponse(
-            job.description,
-            job.model,
-            job.previousGame ? JSON.parse(job.previousGame) : null
-          );
+          const previousGame = job.previousGame ? JSON.parse(job.previousGame) : null;
+          const response = await responsesAPI.createResponse(job.description, job.model, previousGame);
 
-          // Update job with OpenAI response ID
-          await jobManager.markJobPolling(jobId, response.id);
+          // Update job with OpenAI response ID; edits change the previous game with the code tools
+          const workingCode = previousGame?.gameCode || '';
+          await jobManager.markJobPolling(jobId, response.id, workingCode);
           job.status = 'polling';
           job.openaiResponseId = response.id;
+          job.workingCode = workingCode;
           console.log(`Job ${jobId} started with OpenAI response ${response.id}`);
         }
       } catch (startError) {
@@ -357,13 +360,50 @@ router.get("/api/jobs/:jobId", async (req, res) => {
     // IMPORTANT: If job is polling, also check OpenAI status right now
     // This way we don't rely on a background worker that might be killed
     if (job.status === 'polling' && job.openaiResponseId) {
+      let claimedResponseId = null;
       try {
         const apiKey = await settings.get('openAIKey');
         if (apiKey) {
           const { ResponsesAPI } = await import('./responses-api.js');
           const responsesAPI = new ResponsesAPI(apiKey);
 
-          const openaiStatus = await responsesAPI.getResponse(job.openaiResponseId, { reviewed: job.reviewed === '1' });
+          const checkOptions = {
+            reviewed: job.reviewed === '1',
+            workingCode: job.workingCode || '',
+            reviewedCode: job.reviewedGame?.gameCode || ''
+          };
+          let openaiStatus = await responsesAPI.getResponse(job.openaiResponseId, checkOptions);
+
+          // The response is done: only the poll that claims it moves the job on
+          if (FINISHED_STATUSES.includes(openaiStatus.status)) {
+            if (await jobManager.claimResponse(jobId, job.openaiResponseId)) {
+              claimedResponseId = job.openaiResponseId;
+            } else {
+              openaiStatus = { status: 'in_progress' }; // another poll is handling it
+            }
+          }
+
+          if (openaiStatus.status === 'tool_calls') {
+            // Apply the model's code edits and send back the results for its next turn
+            const { code, outputs } = runCodeTools(checkOptions.workingCode, openaiStatus.calls, SAMPLE_FILES);
+            const toolRounds = parseInt(job.toolRounds || '0') + 1;
+            if (toolRounds <= MAX_TOOL_ROUNDS) {
+              const next = await responsesAPI.submitToolOutputs(job.openaiResponseId, job.model, outputs);
+              await jobManager.markJobToolRound(jobId, next.id, code, toolRounds);
+              job.openaiResponseId = next.id;
+              job.workingCode = code;
+              job.toolRounds = String(toolRounds);
+              openaiStatus = { status: 'in_progress' };
+            } else {
+              // Too many turns: test the code as it is now
+              console.log(`Job ${jobId} reached ${MAX_TOOL_ROUNDS} tool rounds, testing the current code`);
+              openaiStatus = await responsesAPI.checkGame('', { ...checkOptions, workingCode: code });
+              if (openaiStatus.status === 'needs_fix') {
+                // The conversation ends on unanswered tool calls, so it can't be asked for a fix
+                openaiStatus = { status: 'failed', error: `The game still didn't work after ${MAX_TOOL_ROUNDS} rounds of edits: ${openaiStatus.error}` };
+              }
+            }
+          }
 
           if (openaiStatus.status === 'needs_review') {
             // The game works: show the model screenshots so it can fix how it looks
@@ -391,7 +431,8 @@ router.get("/api/jobs/:jobId", async (req, res) => {
             const fixAttempts = parseInt(job.fixAttempts || '0');
             if (fixAttempts < MAX_FIX_ATTEMPTS) {
               const fix = await responsesAPI.createFixResponse(job.openaiResponseId, job.model, openaiStatus.error);
-              await jobManager.markJobFixing(jobId, fix.id, fixAttempts + 1, openaiStatus.error);
+              await jobManager.markJobFixing(jobId, fix.id, fixAttempts + 1, openaiStatus.error, openaiStatus.code);
+              job.workingCode = openaiStatus.code;
               job.openaiResponseId = fix.id;
               job.fixAttempts = String(fixAttempts + 1);
               console.log(`Job ${jobId} fix attempt ${fixAttempts + 1}: ${openaiStatus.error}`);
@@ -418,7 +459,10 @@ router.get("/api/jobs/:jobId", async (req, res) => {
         }
       } catch (pollError) {
         console.error(`Error checking OpenAI status for job ${jobId}:`, pollError);
-        // Don't fail the request, just log the error
+        // Don't fail the request, just log the error; the next poll retries the response
+        if (claimedResponseId) {
+          await jobManager.releaseResponse(jobId, claimedResponseId).catch(() => {});
+        }
       }
     }
 
@@ -434,6 +478,7 @@ router.get("/api/jobs/:jobId", async (req, res) => {
       response.progress = job.progress;
       response.fixAttempts = parseInt(job.fixAttempts || '0');
       response.reviewing = job.reviewed === '1';
+      response.toolRounds = parseInt(job.toolRounds || '0');
       response.estimatedRemaining = Math.max(0,
         jobManager.getEstimatedTime(job.model) - Math.floor((Date.now() - parseInt(job.startedAt || job.createdAt)) / 1000)
       );

@@ -1,11 +1,10 @@
 import { createGameGenerationPrompt, parseMarkdownResponse } from '../shared/game-prompt.js';
-import { createFixPrompt, createReviewPrompt, REVIEW_OK } from '../shared/game-prompt-common.js';
+import { createFixPrompt, createReviewPrompt, INSTRUCTIONS } from '../shared/game-prompt-common.js';
+import { CODE_TOOLS } from '../shared/code-tools.js';
 import { HeadlessGameRunner } from './headless-game-runner.js';
 
 // Shown to players instead of OpenAI's quota/rate-limit details (billing links etc.)
 const AI_UNAVAILABLE = 'The AI service is busy or out of credits right now. Please try again later.';
-
-const INSTRUCTIONS ='You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
 
 export class ResponsesAPI {
   constructor(apiKey) {
@@ -56,7 +55,11 @@ export class ResponsesAPI {
       ...request,
       // Instructions are not carried over by previous_response_id, so always send them
       instructions: INSTRUCTIONS,
-      max_output_tokens: 24000,
+      // Includes reasoning; edits go through the code tools, so only new games are written in full
+      max_output_tokens: 32000,
+      // Like instructions, tools are not carried over by previous_response_id
+      tools: CODE_TOOLS,
+      parallel_tool_calls: true,
       background: true
     };
 
@@ -89,12 +92,24 @@ export class ResponsesAPI {
     };
   }
 
+  // Send the results of the model's code tool calls back so it can carry on
+  async submitToolOutputs(previousResponseId, model, outputs) {
+    return this.submitResponse({
+      model,
+      previous_response_id: previousResponseId,
+      input: outputs.map(({ call_id, output }) => ({ type: 'function_call_output', call_id, output }))
+    });
+  }
+
   /**
    * @param {string} responseId
-   * @param {{reviewed?: boolean}} options - reviewed: this is the reply to the screenshot review; a reply
-   *   without a working game means "keep the reviewed game" (keepPrevious) instead of asking for a fix
+   * @param {{reviewed?: boolean, workingCode?: string, reviewedCode?: string}} options
+   *   reviewed: this is the reply to the screenshot review; a reply that leaves the game unchanged or
+   *   breaks it means "keep the reviewed game" (keepPrevious) instead of asking for a fix
+   *   workingCode: the game as changed by the code tools so far; reviewedCode: the game the review looked at
+   * @returns status 'tool_calls' with the calls to run, or the result of checkGame() once the model is done
    */
-  async getResponse(responseId, { reviewed = false } = {}) {
+  async getResponse(responseId, options = {}) {
 
     const response = await fetch(`${this.baseURL}/${responseId}`, {
       method: 'GET',
@@ -114,53 +129,20 @@ export class ResponsesAPI {
 
     // Handle completed response
     if (data.status === 'completed' || data.status === 'complete') {
-      // OpenAI Responses API format: find the message item in output array
-      const messageItem = data.output?.find(item => item.type === 'message');
-      const outputText = messageItem?.content?.[0]?.text;
-
-      if (outputText && typeof outputText === 'string') {
-        let gameDefinition;
-        try {
-          gameDefinition = parseMarkdownResponse(outputText);
-        } catch (parseError) {
-          if (reviewed) {
-            console.log(`Review of response ${responseId}: ${outputText.includes(REVIEW_OK) ? 'looks good' : 'no code returned'}`);
-            return { status: 'completed', keepPrevious: true };
-          }
-          return { status: 'needs_fix', error: `Could not find the game code in your reply: ${parseError.message}` };
-        }
-        console.log(`Successfully parsed game definition for response ${responseId}`);
-
-        // Make sure the game actually starts before handing it to the player; a first working
-        // version also gets screenshots for the model to review
-        const smoke = await this.gameRunner.smokeTest(gameDefinition.gameCode, { screenshots: !reviewed });
-        if (!smoke.ok) {
-          const where = smoke.frame === undefined ? 'while loading' : `at frame ${smoke.frame}`;
-          console.error(`Response ${responseId} failed smoke test ${where}: ${smoke.error}`);
-          if (reviewed) return { status: 'completed', keepPrevious: true }; // the reviewed game still works
-          return { status: 'needs_fix', error: `${smoke.error} (${where})` };
-        }
-
-        // Extract metadata by running game code in QuickJS
-        const metadata = await this.gameRunner.extractMetadata(gameDefinition.gameCode);
-        gameDefinition.metadata = metadata;
-        console.log(`Extracted metadata for response ${responseId}:`, metadata?.title);
-
-        if (!reviewed && smoke.screenshots?.length) {
-          return { status: 'needs_review', gameDefinition, screenshots: smoke.screenshots };
-        }
-        return {
-          status: 'completed',
-          gameDefinition
-        };
-      } else {
-        console.error(`Response ${responseId} marked complete but no text at output[0].content[0].text`);
-        console.error('Response structure:', JSON.stringify(data, null, 2).substring(0, 1000));
-        return {
-          status: 'failed',
-          error: 'No text found in completed response at expected path output[0].content[0].text'
-        };
+      const calls = (data.output || []).filter(item => item.type === 'function_call');
+      if (calls.length) {
+        console.log(`Response ${responseId} called ${calls.map(c => c.name).join(', ')}`);
+        return { status: 'tool_calls', calls };
       }
+
+      // The model is done: its reply is a new game in a code block, or a short note after tool edits
+      const outputText = (data.output || [])
+        .filter(item => item.type === 'message')
+        .flatMap(item => item.content || [])
+        .map(part => part.text || '')
+        .join('\n');
+      console.log(`Response ${responseId} reply: ${outputText.substring(0, 200)}`);
+      return this.checkGame(outputText, options);
     }
 
     // Handle failed response
@@ -221,6 +203,51 @@ export class ResponsesAPI {
       status: data.status, // queued, in_progress, etc.
       progress: this.calculateOpenAIProgress(data.status)
     };
+  }
+
+  /**
+   * Decide what the model's finished turn produced and test it
+   * @param {string} replyText - the model's final reply ('' if it stopped while calling tools)
+   * @param {{reviewed?: boolean, workingCode?: string, reviewedCode?: string}} options - see getResponse()
+   * @returns {{status: 'completed'|'needs_review'|'needs_fix', gameDefinition?, screenshots?, keepPrevious?, error?, code?}}
+   *   code: the game to keep editing when a fix is needed
+   */
+  async checkGame(replyText, { reviewed = false, workingCode = '', reviewedCode = '' } = {}) {
+    // A code block in the reply replaces the game; otherwise the tool edits are the result
+    let code = workingCode;
+    try {
+      code = parseMarkdownResponse(replyText).gameCode;
+    } catch {
+      // no code block
+    }
+
+    if (!code) {
+      return { status: 'needs_fix', error: 'Could not find the game code in your reply: no ```javascript block and no code written with the tools', code: '' };
+    }
+    if (reviewed && code === reviewedCode) {
+      console.log('Review: looks good, no changes');
+      return { status: 'completed', keepPrevious: true };
+    }
+
+    // Make sure the game actually starts before handing it to the player; a first working
+    // version also gets screenshots for the model to review
+    const smoke = await this.gameRunner.smokeTest(code, { screenshots: !reviewed });
+    if (!smoke.ok) {
+      const where = smoke.frame === undefined ? 'while loading' : `at frame ${smoke.frame}`;
+      console.error(`Game failed smoke test ${where}: ${smoke.error}`);
+      if (reviewed) return { status: 'completed', keepPrevious: true }; // the reviewed game still works
+      return { status: 'needs_fix', error: `${smoke.error} (${where})`, code };
+    }
+
+    const gameDefinition = { gameCode: code, isPublished: false };
+    // Extract metadata by running game code in QuickJS
+    gameDefinition.metadata = await this.gameRunner.extractMetadata(code);
+    console.log('Extracted metadata:', gameDefinition.metadata?.title);
+
+    if (!reviewed && smoke.screenshots?.length) {
+      return { status: 'needs_review', gameDefinition, screenshots: smoke.screenshots };
+    }
+    return { status: 'completed', gameDefinition };
   }
 
   calculateOpenAIProgress(status) {

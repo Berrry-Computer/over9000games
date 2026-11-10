@@ -97,6 +97,9 @@ POST /api/game/generate ──► job in Redis ──► OpenAI Responses API (b
    │                                              │
 client polls GET /api/jobs/:id ◄──────────────────┘
    │
+   ├─ edits, fixes and reviews: the model calls code tools (replace_code, view_code,
+   │     search_code, write_code) instead of writing the whole game again; each poll
+   │     applies the calls and sends the results back
    ├─ smoke test: the server runs the game headlessly with scripted input
    │     fails to start → error sent back to the model to fix (a few attempts)
    ├─ screenshot review: 3 screenshots (title, play, end) sent to the model,
@@ -105,9 +108,9 @@ client polls GET /api/jobs/:id ◄───────────────�
    └─ completed → game code to the client → QuickJS sandbox
 ```
 
-- The prompt (`src/shared/game-prompt-common.js`) contains both sample games plus the console API and NES design guidance.
+- The new-game prompt (`src/shared/game-prompt-common.js`) contains both sample games plus the console API and NES design guidance. Edit prompts only list the samples' functions; the model reads the parts it needs with the code tools, and a game over 60KB is read the same way.
 - Polling drives the job: each poll checks the OpenAI response, so no background worker is needed within Reddit's request time limits.
-- A typical generation takes 1.5-2 minutes including the review.
+- A typical generation takes 1.5-2 minutes including the review. Edits only send the changes and read code on demand, so their size doesn't depend on the game's (a platformer edit: ~20s, ~$0.07).
 
 ## Getting Started
 
@@ -147,8 +150,9 @@ client polls GET /api/jobs/:id ◄───────────────�
 
 #### Testing
 - `node scripts/test-console.js`: tilemap, text layer, memory regions, palette, line scroll and music sequencer tests
+- `node scripts/test-code-tools.js`: the code tools the model edits games with
 - `node scripts/golden-frames.js --check scripts/goldens.json src/shared/test-games/`: sample games render the recorded frames (`--record` to update after an intended change)
-- `node scripts/test-generation.js --model "openai/gpt-6.1-sol" --prompt "snake game"`: generate through OpenRouter, including the smoke test and screenshot review; `--models a,b` compares models. Needs `OPENROUTER_API_KEY`; results go to `./generated-games/`
+- `node scripts/test-generation.js --model "openai/gpt-6.1-sol" --prompt "snake game"`: generate through OpenRouter, including the smoke test and screenshot review; `--models a,b` compares models; `--edit game.js` edits an existing game with the code tools. Needs `OPENROUTER_API_KEY`; results go to `./generated-games/`
 
 ### Local testbed
 `src/testbed/` runs the real server with Devvit APIs mocked through Node.js ESM loader hooks (Reddit context, media uploads, Redis), so games and generation can be tested without uploading. The testbed reads the sample games at startup; restart it after editing them.
@@ -158,7 +162,7 @@ client polls GET /api/jobs/:id ◄───────────────�
 ### Game Generation
 - `POST /api/game/generate`: create a generation job (returns jobId)
 - `POST /api/game/edit`: create an editing job for an existing game
-- `GET /api/jobs/:jobId`: poll status (`progress`, `fixAttempts`, `reviewing`) and get the finished game
+- `GET /api/jobs/:jobId`: poll status (`progress`, `fixAttempts`, `reviewing`, `toolRounds`) and get the finished game
 - `POST /api/game/test`: load a sample game by name (`gameName`)
 
 ### Leaderboard

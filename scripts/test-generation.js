@@ -10,6 +10,7 @@
  *   --model <model>     Single AI model to test (required if --models not specified)
  *   --models <models>   Comma-separated list of models to test (required if --model not specified)
  *   --prompt <prompt>   Game description prompt (default: "a simple pong game")
+ *   --edit <game.js>    Edit this game, with --prompt as the change request (uses the code tools)
  *   --output <dir>      Output directory for generated games (default: ./generated-games)
  *   --verbose           Enable verbose logging
  *
@@ -20,12 +21,12 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createGameGenerationPromptWithSamples, createFixPrompt, createReviewPrompt, parseMarkdownResponse } from '../src/shared/game-prompt-common.js';
+import { createGameGenerationPromptWithSamples, createGameEditPromptWithSamples, createFixPrompt, createReviewPrompt, parseMarkdownResponse, INSTRUCTIONS } from '../src/shared/game-prompt-common.js';
+import { toChatTools, runCodeTools, MAX_TOOL_ROUNDS } from '../src/shared/code-tools.js';
 import { HeadlessGameRunner } from '../src/server/headless-game-runner.js';
 
-// Keep in sync with src/server/responses-api.js
-const INSTRUCTIONS = 'You are a retro game designer that creates NES-style games. You must respond with a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update().';
-const MAX_OUTPUT_TOKENS = 24000;
+// Keep in sync with src/server/responses-api.js and src/server/index.js
+const MAX_OUTPUT_TOKENS = 32000;
 const MAX_FIX_ATTEMPTS = 2;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,6 +53,9 @@ function parseArgs() {
       case '--prompt':
         options.prompt = args[++i];
         break;
+      case '--edit':
+        options.edit = args[++i];
+        break;
       case '--output':
         options.output = args[++i];
         break;
@@ -66,6 +70,7 @@ Options:
   --model <model>     Single AI model to test (required if --models not specified)
   --models <models>   Comma-separated list of models to test (required if --model not specified)
   --prompt <prompt>   Game description prompt (default: "a simple pong game")
+  --edit <game.js>    Edit this game, with --prompt as the change request (uses the code tools)
   --output <dir>      Output directory for generated games (default: ./generated-games)
   --verbose           Enable verbose logging
   --help              Show this help message
@@ -77,6 +82,7 @@ Examples:
   node scripts/test-generation.js --model openai/gpt-4o-mini --prompt "a snake game"
   node scripts/test-generation.js --models "openai/gpt-4o-mini,anthropic/claude-3.5-sonnet"
   node scripts/test-generation.js --model google/gemini-2.0-flash-exp --prompt "a space invaders clone"
+  node scripts/test-generation.js --model openai/gpt-6.1-sol --edit src/shared/test-games/pong.js --prompt "make the ball faster"
         `);
         process.exit(0);
       default:
@@ -113,53 +119,68 @@ function ensureOutputDir(outputDir) {
 }
 
 
-// Generate game using OpenRouter
-// allowNoCode: a reply without a code block returns gameDefinition null instead of throwing (screenshot review)
-async function generateWithOpenRouter(model, prompt, apiKey, verbose, outputDir, messages, allowNoCode = false) {
-  log(`Generating game with ${model}...`, 'info', verbose);
+// Run one model turn through OpenRouter, like a job on the server: tool calls are applied to
+// session.code and answered until the model replies with text; a code block in the reply replaces the game.
+// Appends the turn to messages and returns the reply text.
+async function runModelTurn(model, prompt, apiKey, verbose, outputDir, messages, session) {
+  log(`Running ${model}...`, 'info', verbose);
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/your-username/over9000games',
-      'X-Title': 'Over9000Games Test Script'
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [{ role: 'system', content: INSTRUCTIONS }, ...messages],
-      max_tokens: MAX_OUTPUT_TOKENS
-    })
-  });
+  for (;;) {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://github.com/your-username/over9000games',
+        'X-Title': 'Over9000Games Test Script'
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'system', content: INSTRUCTIONS }, ...messages],
+        tools: toChatTools(),
+        parallel_tool_calls: true,
+        max_tokens: MAX_OUTPUT_TOKENS
+      })
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
 
-  // 1) Get raw response and save it
-  const data = await response.json();
-  const responseFile = saveRawResponse(JSON.stringify(data, null, 2), model, outputDir, prompt, verbose);
+    const data = await response.json();
+    session.responseFile = saveRawResponse(JSON.stringify(data, null, 2), model, outputDir, prompt, verbose);
+    if (data.usage) {
+      session.cost += data.usage.cost || 0;
+      log(`${model} usage: ${data.usage.prompt_tokens} in / ${data.usage.completion_tokens} out` +
+        (data.usage.cost !== undefined ? ` / $${data.usage.cost.toFixed(4)}` : ''), 'info');
+    }
 
-  const rawResponse = data.choices[0].message.content;
-  if (data.usage) {
-    log(`${model} usage: ${data.usage.prompt_tokens} in / ${data.usage.completion_tokens} out` +
-      (data.usage.cost !== undefined ? ` / $${data.usage.cost.toFixed(4)}` : ''), 'info');
-  }
+    // Keep the whole assistant message (tool calls, reasoning) so the next request continues it
+    const message = data.choices[0].message;
+    messages.push(message);
 
-  // 2) Try to parse game definition
-  try {
-    log(`Parsing ${model} response...`, 'verbose', verbose);
-    const gameDefinition = parseMarkdownResponse(rawResponse);
-    return { gameDefinition, rawResponse, responseFile };
-  } catch (parseError) {
-    if (allowNoCode) return { gameDefinition: null, rawResponse, responseFile };
-    // If error happens, dump response to console
-    console.log('\n--- RAW RESPONSE BODY ---');
-    console.log(rawResponse);
-    console.log('--- END RAW RESPONSE ---\n');
-    throw parseError;
+    const calls = message.tool_calls || [];
+    if (!calls.length) {
+      const reply = message.content || '';
+      try {
+        session.code = parseMarkdownResponse(reply).gameCode;
+      } catch {
+        // no code block: the tool edits are the result
+      }
+      log(`${model} reply: ${reply.substring(0, 200)}`, 'info');
+      return reply;
+    }
+
+    session.toolRounds++;
+    const { code, outputs } = runCodeTools(session.code, calls.map(c => ({ call_id: c.id, name: c.function.name, arguments: c.function.arguments })), session.files);
+    session.code = code;
+    calls.forEach((c, i) => log(`${model} ${c.function.name}: ${outputs[i].output.split('\n')[0]}`, 'info'));
+    messages.push(...outputs.map(o => ({ role: 'tool', tool_call_id: o.call_id, content: o.output })));
+    if (session.toolRounds >= MAX_TOOL_ROUNDS) {
+      log(`${model} reached ${MAX_TOOL_ROUNDS} tool rounds, testing the current code`, 'error');
+      return '';
+    }
   }
 }
 
@@ -218,13 +239,18 @@ async function main() {
   const pongCode = fs.readFileSync(path.join(__dirname, '../src/shared/test-games/pong.js'), 'utf8');
   const platformerCode = fs.readFileSync(path.join(__dirname, '../src/shared/test-games/platformer.js'), 'utf8');
 
-  const fullPrompt = createGameGenerationPromptWithSamples(options.prompt, pongCode, platformerCode);
+  const sampleFiles = { 'pong.js': pongCode, 'platformer.js': platformerCode };
+
+  // --edit: change an existing game with the code tools, like POST /api/game/edit
+  const editCode = options.edit ? fs.readFileSync(options.edit, 'utf8') : '';
+  const fullPrompt = options.edit
+    ? createGameEditPromptWithSamples(options.prompt, { gameCode: editCode, metadata: {}, description: '' }, sampleFiles)
+    : createGameGenerationPromptWithSamples(options.prompt, pongCode, platformerCode);
 
   // Test all models in parallel
   const testPromises = options.models.map(async (model) => {
     const startTime = Date.now();
-    let rawResponse = null;
-    let responseFile = null;
+    const session = { code: editCode, files: sampleFiles, toolRounds: 0, cost: 0, responseFile: null };
 
     // Always save the prompt first
     const promptFile = saveRawResponse(fullPrompt, model, options.output, options.prompt, options.verbose, 'prompt');
@@ -238,10 +264,9 @@ async function main() {
       let fixAttempts = 0;
 
       for (;;) {
-        const result = await generateWithOpenRouter(model, options.prompt, openrouterKey, options.verbose, options.output, messages);
-        rawResponse = result.rawResponse;
-        gameDefinition = result.gameDefinition;
-        responseFile = result.responseFile;
+        await runModelTurn(model, options.prompt, openrouterKey, options.verbose, options.output, messages, session);
+        if (!session.code) throw new Error('No game code: no ```javascript block and no code written with the tools');
+        gameDefinition = { gameCode: session.code, isPublished: false };
 
         const smoke = await runner.smokeTest(gameDefinition.gameCode);
         if (smoke.ok) {
@@ -256,14 +281,14 @@ async function main() {
         if (fixAttempts >= MAX_FIX_ATTEMPTS) break;
 
         fixAttempts++;
-        messages.push({ role: 'assistant', content: rawResponse }, { role: 'user', content: createFixPrompt(validationErrors[0]) });
+        messages.push({ role: 'user', content: createFixPrompt(validationErrors[0]) });
         log(`${model} requesting fix ${fixAttempts}/${MAX_FIX_ATTEMPTS}...`, 'info');
       }
       // Same as the server: show the model screenshots of the working game and keep its revision if it still runs
       let reviewed = 'skipped';
       if (validationErrors.length === 0) {
         const { screenshots } = await runner.smokeTest(gameDefinition.gameCode, { screenshots: true });
-        messages.push({ role: 'assistant', content: rawResponse }, {
+        messages.push({
           role: 'user',
           content: [
             { type: 'text', text: createReviewPrompt(screenshots.map(s => s.label)) },
@@ -271,11 +296,12 @@ async function main() {
           ]
         });
         log(`${model} reviewing ${screenshots.length} screenshots...`, 'info');
-        const review = await generateWithOpenRouter(model, options.prompt, openrouterKey, options.verbose, options.output, messages, true);
-        if (!review.gameDefinition) {
+        const reviewedCode = session.code;
+        await runModelTurn(model, options.prompt, openrouterKey, options.verbose, options.output, messages, session);
+        if (session.code === reviewedCode) {
           reviewed = 'looks good';
-        } else if ((await runner.smokeTest(review.gameDefinition.gameCode)).ok) {
-          gameDefinition = review.gameDefinition;
+        } else if ((await runner.smokeTest(session.code)).ok) {
+          gameDefinition = { gameCode: session.code, isPublished: false };
           reviewed = 'revised';
         } else {
           reviewed = 'revision failed to start, kept the first version';
@@ -295,7 +321,9 @@ async function main() {
         validationErrors,
         fixAttempts,
         reviewed,
-        filepaths: { ...filepaths, responseFile, promptFile },
+        filepaths: { ...filepaths, responseFile: session.responseFile, promptFile },
+        toolRounds: session.toolRounds,
+        cost: session.cost,
         gameDefinition
       };
     } catch (error) {
@@ -307,7 +335,7 @@ async function main() {
         success: false,
         error: error.message,
         duration,
-        responseFile,
+        responseFile: session.responseFile,
         promptFile
       };
     }
@@ -331,7 +359,7 @@ async function main() {
   for (const [model, result] of Object.entries(results)) {
     console.log(`\n${model}: ${result.success ? '✅ SUCCESS' : '❌ FAILED'}`);
     if (result.success) {
-      console.log(`  Duration: ${result.duration}ms`);
+      console.log(`  Duration: ${result.duration}ms, $${result.cost.toFixed(4)}, ${result.toolRounds} tool round(s)`);
       console.log(`  Starts: ${result.validationErrors.length ? '❌ ' + result.validationErrors[0] : '✅'}${result.fixAttempts ? ` (after ${result.fixAttempts} fix turn(s))` : ''}`);
       console.log(`  Screenshot review: ${result.reviewed}`);
       console.log(`  Game file: ${result.filepaths.gameFile}`);

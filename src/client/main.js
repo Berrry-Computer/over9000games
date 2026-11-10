@@ -510,7 +510,11 @@ function startJobPolling(jobId) {
     clearInterval(pollInterval);
   }
 
+  let polling = false;
   pollInterval = setInterval(async () => {
+    // A poll can take longer than the interval (smoke tests, tool calls); don't overlap them
+    if (polling) return;
+    polling = true;
     try {
       const response = await fetch(`/api/jobs/${jobId}`);
 
@@ -534,6 +538,8 @@ function startJobPolling(jobId) {
               ? "Game works! Checking how it looks..."
               : jobData.fixAttempts
               ? `Game didn't start, fixing (try ${jobData.fixAttempts})...`
+              : jobData.toolRounds
+              ? `Editing the game (step ${jobData.toolRounds})...`
               : `Generating with ${jobData.model}... ${progress}% • ${remaining}s remaining`,
             "loading"
           );
@@ -576,6 +582,8 @@ function startJobPolling(jobId) {
 
       // Don't clear interval immediately - might be temporary network issue
       // Only stop after several failures
+    } finally {
+      polling = false;
     }
   }, 3000); // Poll every 3 seconds
 }

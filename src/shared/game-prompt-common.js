@@ -1,3 +1,8 @@
+import { GAME_FILE, outlineCode } from './code-tools.js';
+
+// System instructions for every request (generation, edits, fixes, reviews)
+export const INSTRUCTIONS = 'You are a retro game designer that creates NES-style games. A new game is a single JavaScript block in markdown format (```javascript) containing three functions: metadata(), resources(), and update(). To change an existing game, use the code tools instead of writing it again.';
+
 // Common prompt sections
 function getFormatSection() {
   return `
@@ -94,20 +99,46 @@ Create a single JavaScript file following the exact same structure for: "${descr
   }
 }
 
-// Edit prompt creation function
-export function createGameEditPromptWithSamples(editDescription, previousGame, pongSample, platformerSample) {
+// How edits are made: tool calls instead of writing the whole game again (see code-tools.js)
+const CODE_TOOLS_GUIDE = `Make the changes with the code tools: replace_code with a list of edits, view_code and search_code to read the game or the sample games, write_code only if most of the game changes.
+Each turn costs time, so plan the changes first and put all the edits you can into one replace_code call (they run in order).
+Do not reply with the whole game. When the changes are done, reply with one short sentence saying what you changed.`;
+
+// Games up to this size are pasted into the edit prompt; bigger ones get an outline and are read with the tools
+export const FULL_GAME_MAX_CHARS = 60000;
+
+// The sample games aren't pasted into edits: the model reads them with view_code/search_code
+function getSampleFilesSection(sampleFiles) {
+  return `
+<sample-games>
+The examples are sample games you can read with view_code and search_code (pass the file name), e.g. to copy helpers like rgb() and fadePalette() or to see how something is done. They can't be changed.
+${Object.entries(sampleFiles).map(([name, code]) => `
+${name}: ${outlineCode(code)}`).join('\n')}
+</sample-games>`;
+}
+
+function getCurrentGameCode(gameCode) {
+  if (gameCode.length <= FULL_GAME_MAX_CHARS) {
+    return `\`\`\`javascript
+${gameCode}
+\`\`\``;
+  }
+  return `The game is too big to show here; read the parts you need with view_code and search_code before editing.
+${GAME_FILE}: ${outlineCode(gameCode)}`;
+}
+
+// Edit prompt creation function; sampleFiles maps file names to the sample games' code
+export function createGameEditPromptWithSamples(editDescription, previousGame, sampleFiles) {
   try {
-    return `${getFormatSection()}${getExampleOutputs(pongSample, platformerSample)}
+    return `${getFormatSection()}${getSampleFilesSection(sampleFiles)}
 
 <current-game>
-GAME TO EDIT:
+GAME TO EDIT (${GAME_FILE}):
 Title: ${previousGame.metadata?.title || 'Unknown Game'}
 Description: ${previousGame.metadata?.description || 'No description'}
 Original Request: ${previousGame.description || 'No original description'}
 
-\`\`\`javascript
-${previousGame.gameCode}
-\`\`\`
+${getCurrentGameCode(previousGame.gameCode)}
 </current-game>${getRequirementsSection()}
 
 <task>
@@ -115,7 +146,7 @@ Edit the existing game based on this request: "${editDescription}"
 
 Keep the same basic structure and game mechanics unless specifically asked to change them.
 If the game has no \`memory: 1\` in metadata() it draws by returning sprites/text/bg/scroll from update(): convert ALL of its drawing to console memory and add \`memory: 1\` (a game with memory: 1 ignores returned sprites/text/bg/scroll).
-Return the complete modified game code, not just the changes.
+${CODE_TOOLS_GUIDE}
 </task>
 `;
 
@@ -135,7 +166,7 @@ ${failure}
 </test-result>
 
 <task>
-Fix the problem and return the complete corrected game as a single \`\`\`javascript block with metadata(), resources(), and update().
+Fix the problem with replace_code (view_code/search_code show the current code), then reply with one short sentence saying what you changed.
 The game must not end before the player has pressed anything.
 </task>
 `;
@@ -162,7 +193,7 @@ Look at the screenshots as a player seeing the game for the first time:
 - Does it look like a polished NES game?
 
 If everything looks right, reply with only: ${REVIEW_OK}
-Otherwise fix the problems and return the complete corrected game as a single \`\`\`javascript block.
+Otherwise fix the problems with replace_code (or write_code for a rewrite), then reply with one short sentence saying what you changed.
 </task>
 `;
 }

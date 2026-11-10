@@ -83,19 +83,45 @@ export class JobManager {
     console.log(`Updated job ${jobId}:`, Object.keys(updates));
   }
 
-  async markJobPolling(jobId, openaiResponseId) {
+  // workingCode: the game the code tools edit (the previous game for edits, empty for a new game)
+  async markJobPolling(jobId, openaiResponseId, workingCode = '') {
     await this.updateJob(jobId, {
       status: 'polling',
-      openaiResponseId
+      openaiResponseId,
+      workingCode
     });
   }
 
-  async markJobFixing(jobId, openaiResponseId, fixAttempts, lastError) {
+  // Only one poll may act on a finished OpenAI response (apply its tool calls, ask for a fix...);
+  // overlapping polls would otherwise apply the same edits twice
+  async claimResponse(jobId, openaiResponseId) {
+    const key = `job:${jobId}:claimed:${openaiResponseId}`;
+    const count = await this.redis.incrBy(key, 1);
+    if (count === 1) await this.redis.expire(key, 24 * 60 * 60);
+    return count === 1;
+  }
+
+  // Let the next poll retry a response whose handling failed
+  async releaseResponse(jobId, openaiResponseId) {
+    await this.redis.del(`job:${jobId}:claimed:${openaiResponseId}`);
+  }
+
+  // The model called code tools: keep the edited code and wait for its next turn
+  async markJobToolRound(jobId, openaiResponseId, workingCode, toolRounds) {
+    await this.updateJob(jobId, {
+      openaiResponseId,
+      workingCode,
+      toolRounds: String(toolRounds)
+    });
+  }
+
+  async markJobFixing(jobId, openaiResponseId, fixAttempts, lastError, workingCode) {
     await this.updateJob(jobId, {
       status: 'polling',
       openaiResponseId,
       fixAttempts: String(fixAttempts),
-      lastError
+      lastError,
+      workingCode
     });
   }
 
@@ -105,7 +131,8 @@ export class JobManager {
       status: 'polling',
       openaiResponseId,
       reviewed: '1',
-      reviewedGame: JSON.stringify(gameDefinition)
+      reviewedGame: JSON.stringify(gameDefinition),
+      workingCode: gameDefinition.gameCode
     });
   }
 
