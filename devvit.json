@@ -57,7 +57,11 @@
       ]
     },
     "media": true,
-    "redis": true
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "asUser": ["SUBMIT_COMMENT"]
+    }
   },
   "dev": {
     "subreddit": "over9000games_private"
