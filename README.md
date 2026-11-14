@@ -179,7 +179,7 @@ client polls GET /api/jobs/:id ◄───────────────�
 
 ### Posts
 - `POST /api/post/create`: create a game post with a screenshot
-- `POST /api/comment/post`: comment on a post
+- `POST /api/comment/post`: share a high score as the user (reply to the stickied scores comment, or top-level with a custom message)
 - `GET /api/init`: app state and user context
 
 ### App Integration

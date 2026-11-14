@@ -18,7 +18,7 @@ The app does not collect your email address, location, contacts, payment informa
 ## What the app shares
 
 - **OpenAI**: to create or edit a game, the app sends your game description (and, when editing, the current game code) along with screenshots of the generated game to the OpenAI API. Your Reddit username and user ID are not sent. OpenAI processes this data under its [API data usage policies](https://openai.com/policies/api-data-usage-policies).
-- **Reddit**: published games, their screenshots and comments made through the app are posted to Reddit by the app's account and are public like any other Reddit content.
+- **Reddit**: published games and their screenshots are posted to Reddit by the app's account. When you choose to share a high score, the comment is posted from your own account (as a reply under the post's stickied high scores comment, or top-level if you write your own message) and you can delete it like any other comment. All of this is public like any other Reddit content.
 
 The app does not sell your data or share it with anyone else.
 

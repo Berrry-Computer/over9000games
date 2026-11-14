@@ -791,6 +791,8 @@ async function publishGameToReddit() {
 }
 
 // High Score Comment Functions
+let pendingCommentScore = null;
+
 function showHighScoreCommentPrompt(score, rank) {
   // Update modal title and subtitle
   const titleElement = document.getElementById("high-score-title");
@@ -800,11 +802,12 @@ function showHighScoreCommentPrompt(score, rank) {
     titleElement.textContent = `HIGH SCORE! #${rank}`;
   }
   if (subtitleElement) {
-    subtitleElement.textContent = "Share your achievement with a comment?";
+    subtitleElement.textContent = `Share your score of ${score}? It's posted from your account.`;
   }
 
-  // Pre-fill comment with score
-  commentMessageElement.value = `Just scored ${score}! 🎮`;
+  pendingCommentScore = score;
+  commentMessageElement.value = "";
+  commentMessageElement.placeholder = "Optional. Leave empty to reply under the high scores thread.";
 
   // Show the modal
   highScoreCommentElement.style.display = "block";
@@ -821,11 +824,6 @@ function showCommentStatus(message, type = "loading") {
 async function postHighScoreComment() {
   const message = commentMessageElement.value.trim();
 
-  if (!message) {
-    showCommentStatus("Please enter a message!", "error");
-    return;
-  }
-
   // Disable form during submission
   const commentButton = document.getElementById("btn-post-comment");
   const skipButton = document.getElementById("btn-skip-comment");
@@ -841,7 +839,7 @@ async function postHighScoreComment() {
     const response = await fetch("/api/comment/post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, score: pendingCommentScore }),
     });
 
     if (!response.ok) {

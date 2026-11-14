@@ -670,6 +670,43 @@ router.get("/api/leaderboard", async (_req, res) => {
   }
 });
 
+// Score comments follow Reddit's review rules: posted as the user, only after
+// they press the button. Generic score lines go as replies to one stickied
+// app comment per post; a message the player wrote may be top-level.
+async function getScoresCommentId(postId) {
+  const key = `game:${postId}:scoresCommentId`;
+  const existing = await redis.get(key);
+  if (existing) return existing;
+
+  // Only one poll creates the sticky; others wait for its id
+  const lockKey = `${key}:lock`;
+  const gotLock = await redis.set(lockKey, "1", {
+    nx: true,
+    expiration: new Date(Date.now() + 30000),
+  });
+  if (!gotLock) {
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      const id = await redis.get(key);
+      if (id) return id;
+    }
+    throw new Error("Timed out waiting for the scores comment");
+  }
+
+  const comment = await reddit.submitComment({
+    id: postId,
+    text: "🏆 **High scores** — reply here to share yours. Score replies are posted by players and can be deleted by them.",
+    runAs: "APP",
+  });
+  try {
+    await comment.distinguish(true);
+  } catch (error) {
+    console.error(`Could not sticky scores comment on ${postId}:`, error);
+  }
+  await redis.set(key, comment.id);
+  return comment.id;
+}
+
 router.post("/api/comment/post", async (req, res) => {
   const { postId } = context;
   if (!postId) {
@@ -681,23 +718,32 @@ router.post("/api/comment/post", async (req, res) => {
   }
 
   try {
-    const { message } = req.body;
+    const message = String(req.body.message || "").trim();
+    const score = Number(req.body.score);
 
-    if (!message || message.trim().length === 0) {
+    if (!message && !Number.isFinite(score)) {
       res.status(400).json({
         status: "error",
-        message: "Comment message is required",
+        message: "A message or score is required",
       });
       return;
     }
 
-    // Post comment to Reddit
-    await reddit.submitComment({
-      id: postId,
-      text: message.trim()
-    });
-
-    console.log(`Comment posted to post ${postId}`);
+    if (message) {
+      // The player wrote something: top-level comment, as the player
+      const text = Number.isFinite(score) ? `${message}\n\n*Score: ${score}*` : message;
+      await reddit.submitComment({ id: postId, text, runAs: "USER" });
+      console.log(`Top-level score comment posted to post ${postId}`);
+    } else {
+      // Generic score line: reply to the stickied scores comment, as the player
+      const parentId = await getScoresCommentId(postId);
+      await reddit.submitComment({
+        id: parentId,
+        text: `Scored ${score}! 🎮`,
+        runAs: "USER",
+      });
+      console.log(`Score reply posted under ${parentId} on post ${postId}`);
+    }
 
     res.json({
       success: true,

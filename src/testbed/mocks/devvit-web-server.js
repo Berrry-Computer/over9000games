@@ -1021,7 +1021,7 @@ export const reddit = {
       throw err;
     }
 
-    return { id: commentId };
+    return { id: commentId, distinguish: async () => {} };
   }
 };
 

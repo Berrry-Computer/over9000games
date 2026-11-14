@@ -133,7 +133,7 @@ App registers subreddit menu for moderators (`/internal/menu/post-create`) and a
 
 ### Post Management
 - `POST /api/post/create`: Create shareable game post with screenshot
-- `POST /api/comment/post`: Post a comment on a Reddit post
+- `POST /api/comment/post`: Share a high score as the user (`runAs: 'USER'`) after they press POST SCORE: with no message it replies to the post's stickied app comment (`game:{postId}:scoresCommentId`, created on first use); with a message it's top-level. Reddit app review requires this
 - `GET /api/init`: Initialize application state and user context
 
 ### App Integration
