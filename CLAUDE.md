@@ -213,6 +213,7 @@ Project uses ES modules (`"type": "module"`) with separate tsconfig for client/s
 ### Gotchas
 - **Keys**: X = A button, Z = B button (Space pause, Enter restart, Esc close menu)
 - **QuickJS build**: the client imports only `@jitl/quickjs-wasmfile-release-sync` (via `quickjs-emscripten-core`); `getQuickJS()` bundles all four variants, each named `emscripten-module.wasm`, and a rebuild can then serve the wrong one ("LinkError: import function must be callable"). The server uses `@jitl/quickjs-singlefile-cjs-release-sync`
+- **Sound opt-in**: sound is off until the player presses SOUND in the action bar (Reddit app review); no AudioContext is created before that. The choice is kept in `localStorage` (`res9000:sound`) and gated in `AudioManager` (`isSoundEnabled`/`setEnabled`)
 - **Audio**: sounds and music notes are dropped while the AudioContext isn't running (a suspended context's clock stands still, so queued notes would all play at once on resume); pausing suspends the context
 - **Text backing**: `REG_TEXT_BG` boxes every text cell including the HUD and persists; samples dim the scene with `PAL` behind title text instead
 - **Testbed**: reads the sample games at startup; restart it after editing them. Client changes need `npm run build:client:testbed`

@@ -127,6 +127,23 @@ body {
   border-bottom: 3px solid #440044;
 }
 
+.btn.sound-btn {
+  background: #555555;
+  color: var(--nes-white);
+  border-top: 3px solid #888888;
+  border-left: 3px solid #888888;
+  border-right: 3px solid #111111;
+  border-bottom: 3px solid #111111;
+}
+
+.btn.sound-btn.on {
+  background: #e45c10;
+  border-top: 3px solid #ff9944;
+  border-left: 3px solid #ff9944;
+  border-right: 3px solid #882200;
+  border-bottom: 3px solid #882200;
+}
+
 .btn.debug-btn {
   background: var(--nes-yellow);
   color: var(--nes-dark-gray);

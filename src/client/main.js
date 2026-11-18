@@ -1,6 +1,7 @@
 import { navigateTo } from "@devvit/web/client";
 import { getGameRunner } from "./game-runner.js";
 import { debugPanel } from "./debug-panel.js";
+import { isSoundEnabled, setSoundEnabled } from "./audio/audio-manager.js";
 
 const titleElement = document.getElementById("title");
 const scoresListElement = document.getElementById("scores-list"); // Legacy, may be removed
@@ -939,6 +940,25 @@ const handleShare = () => {
   showGamePublishing();
 };
 document.getElementById("btn-publish-current")?.addEventListener("click", handleShare);
+
+// Sound is off until the player turns it on, and they can turn it off again at any time
+const soundButton = document.getElementById("btn-sound");
+function renderSoundButton(on) {
+  if (!soundButton) return;
+  soundButton.textContent = on ? "SOUND ON" : "SOUND OFF";
+  soundButton.classList.toggle("on", on);
+  soundButton.setAttribute("aria-pressed", String(on));
+}
+renderSoundButton(isSoundEnabled());
+soundButton?.addEventListener("click", () => {
+  const on = !isSoundEnabled();
+  if (gameRunner?.audioManager) {
+    gameRunner.audioManager.setEnabled(on);
+  } else {
+    setSoundEnabled(on);
+  }
+  renderSoundButton(on);
+});
 
 // Helper function to check if click is on action buttons
 function isClickOnControlButton(target) {

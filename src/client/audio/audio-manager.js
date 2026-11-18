@@ -343,6 +343,29 @@ function createSoundSlot(slotId) {
 // AudioManager Class
 // ----------------------------------------------------------------------------
 
+// Sound is opt-in (Reddit app review): no audio context is created or played until the
+// player turns sound on, and they can turn it off at any time
+const SOUND_PREF_KEY = 'res9000:sound';
+let soundEnabled = false;
+try {
+  soundEnabled = localStorage.getItem(SOUND_PREF_KEY) === 'on';
+} catch (e) {
+  // Storage blocked: sound starts off
+}
+
+export function isSoundEnabled() {
+  return soundEnabled;
+}
+
+export function setSoundEnabled(on) {
+  soundEnabled = on;
+  try {
+    localStorage.setItem(SOUND_PREF_KEY, on ? 'on' : 'off');
+  } catch (e) {
+    // Private mode: the choice lasts until the page closes
+  }
+}
+
 export class AudioManager {
   constructor() {
     this.ctx = null;
@@ -353,6 +376,27 @@ export class AudioManager {
     this.initialized = false;
     this.unlocked = false;
     this._listenForUnlock();
+  }
+
+  get enabled() {
+    return soundEnabled;
+  }
+
+  /**
+   * Turn sound on or off at the player's request. Call it from the click handler so the
+   * context can start inside the gesture
+   */
+  setEnabled(on) {
+    setSoundEnabled(on);
+    if (on) {
+      this.tryResume();
+    } else if (this.ctx) {
+      this.stopMusic();
+      for (const slot of this.slots) {
+        this._stopSlot(slot);
+      }
+      this.suspend();
+    }
   }
 
   /**
@@ -368,7 +412,7 @@ export class AudioManager {
   }
 
   async initialize() {
-    if (this.initialized) return;
+    if (this.initialized || !this.enabled) return;
 
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.masterGain = this.ctx.createGain();
@@ -382,6 +426,7 @@ export class AudioManager {
   }
 
   async resume() {
+    if (!this.enabled) return;
     if (this.ctx?.state === 'suspended') {
       await this.ctx.resume();
     }
@@ -406,6 +451,7 @@ export class AudioManager {
    * Safe to call multiple times - only attempts resume once.
    */
   tryResume() {
+    if (!this.enabled) return;
     if (!this.ctx) {
       // Initialize synchronously if not done yet
       try {
